@@ -1,0 +1,240 @@
+extends SceneTree
+
+func _initialize() -> void:
+	call_deferred("check")
+
+func check() -> void:
+	var game = load("res://main.tscn").instantiate()
+	root.add_child(game)
+	await process_frame
+	game.record_path = "user://prototype-test-%d.json" % Time.get_ticks_usec()
+	assert(game.hand.size() == 10)
+	assert(game.deck.size() == 12)
+	assert(game.gold == 30)
+	assert(game.card_icons.size() == 6 and game.music_player.stream != null)
+	game._toggle_music()
+	assert(not game.music_enabled)
+	game._toggle_music()
+	assert(game.music_enabled)
+	# The illustrated board forwards clicks to the existing placement rules.
+	var selected = game.hand[0]
+	game._select_card(0)
+	await process_frame
+	var board = game.board_box.get_child(0)
+	var click = InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = Vector2(195 if game.CARDS[selected.name].type == "trap" else 420, 82) * (board.size.x / 1200.0)
+	board._gui_input(click)
+	assert(game.hand.size() == 9)
+	game._set_mode("remove")
+	game._slot_pressed(0, 0, game.CARDS[selected.name].type == "soldier")
+	assert(game.hand.size() == 10 and game.cost == 5)
+	# A spent trap from an earlier round can be removed without an improper refund.
+	game._new_game()
+	var trap_card_index = -1
+	for i in range(game.hand.size()):
+		if game.CARDS[game.hand[i].name].type == "trap":
+			trap_card_index = i
+			break
+	assert(trap_card_index >= 0)
+	var old_card = game.hand[trap_card_index]
+	game._select_card(trap_card_index)
+	game._slot_pressed(0, 0, false)
+	game.lanes[0].traps[0][0].hits = 1
+	game._wave_won()
+	var old_gold = game.gold
+	var old_cost = game.cost
+	var old_hand_size = game.hand.size()
+	var old_deck_size = game.deck.size()
+	var old_hand = game.hand.duplicate(true)
+	var old_deck = game.deck.duplicate(true)
+	game.lanes[0].traps[0].append({"name":"화살", "active":true, "hits":0, "placed_round":1})
+	game._set_mode("remove")
+	game._remove_trap(0, 0, 0)
+	assert(game.lanes[0].traps[0].size() == 1 and game.lanes[0].traps[0][0].name == "화살")
+	assert(game.gold == old_gold and game.cost == old_cost and game.hand.size() == old_hand_size and game.deck.size() == old_deck_size)
+	assert(game.hand == old_hand and game.deck == old_deck)
+	# Holding the same card allows a fresh placement using the normal cost.
+	var redraw = -1
+	for i in range(game.hand.size()):
+		if game.hand[i].id == old_card.id: redraw = i
+	if redraw < 0:
+		game.hand.pop_back()
+		game.hand.append(old_card)
+		redraw = game.hand.size() - 1
+	game._select_card(redraw)
+	game._slot_pressed(1, 0, false)
+	assert(game.lanes[1].traps[0].size() == 1 and game.cost == old_cost - game.CARDS[old_card.name].cost and game.gold == old_gold)
+	game._new_game()
+	var backline = {"name":"마법사", "hp":14, "max_hp":14, "placed_round":1}
+	var tank = {"name":"검사", "hp":24, "max_hp":24, "placed_round":1}
+	game.lanes[0].rooms[0].append(backline)
+	game.lanes[0].rooms[0].append(tank)
+	game._set_mode("order")
+	game._soldier_pressed(0, 0, 1)
+	game._soldier_pressed(0, 0, 0)
+	assert(game.lanes[0].rooms[0][0] == tank and game.lanes[0].rooms[0][1] == backline)
+	assert(game.cost == 5 and tank.hp == 24 and backline.hp == 14)
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":[{"name":"적", "hp":20, "attack":1}]}, 0)
+	assert(game.log_lines[2].begins_with("적 → 검사"))
+	game._new_game()
+	var original_hand = game.hand.duplicate()
+	var index = -1
+	for i in range(game.hand.size()):
+		if game.hand[i].name == "검사":
+			index = i
+			break
+	assert(index >= 0)
+	game._select_card(index)
+	game._slot_pressed(0, 0, true)
+	assert(game.cost == 4 and game.hand.size() == 9)
+	game._set_mode("remove")
+	game._slot_pressed(0, 0, true)
+	assert(game.cost == 5 and game.hand.size() == 10 and game.lanes[0].rooms[0].is_empty())
+	assert(game.deck.size() == 12)
+	var enemy_units = []
+	for i in range(2): enemy_units.append({"name":"적%d" % (i + 1), "hp":100, "attack":1})
+	var soldiers = game.lanes[0].rooms[0]
+	for i in range(4): soldiers.append({"name":"검사", "hp":100, "max_hp":100})
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":enemy_units}, 0)
+	var log: Array = game.log_lines
+	assert(log[1].begins_with("검사 →"))
+	assert(log[2].begins_with("적1 →"))
+	assert(log[3].begins_with("검사 →"))
+	assert(log[4].begins_with("적2 →"))
+	assert(log[5].begins_with("검사 →"))
+	assert(log[6].begins_with("검사 →"))
+	game._new_game()
+	enemy_units = []
+	for i in range(4): enemy_units.append({"name":"적%d" % (i + 1), "hp":100, "attack":1})
+	soldiers = game.lanes[0].rooms[0]
+	for i in range(2): soldiers.append({"name":"검사", "hp":100, "max_hp":100})
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":enemy_units}, 0)
+	log = game.log_lines
+	assert(log[1].begins_with("검사 →"))
+	assert(log[2].begins_with("적1 →"))
+	assert(log[3].begins_with("검사 →"))
+	assert(log[4].begins_with("적2 →"))
+	assert(log[5].begins_with("적3 →"))
+	assert(log[6].begins_with("적4 →"))
+	game._new_game()
+	var trap = {"name":"가시", "card":{"name":"가시", "id":999}, "placed_round":1, "active":false, "hits":3}
+	game.lanes[0].traps[0].append(trap)
+	game.gold = 14
+	game.cost = 5
+	game._set_mode("rearm")
+	game._slot_pressed(0, 0, false)
+	assert(not trap.active and trap.hits == 3 and game.gold == 14 and game.cost == 5)
+	game.gold = 15
+	game._slot_pressed(0, 0, false)
+	assert(trap.active and trap.hits == 0 and game.gold == 0 and game.cost == 5)
+	var test_party = {"lane":0, "units":[{"name":"적", "hp":100, "attack":1}]}
+	game._apply_traps(test_party, 0)
+	game._apply_traps(test_party, 0)
+	assert(trap.hits == 2 and test_party.units[0].hp == 86)
+	trap.active = false
+	game.gold = 10
+	game._slot_pressed(0, 0, false)
+	assert(trap.active and game.gold == 0 and game.cost == 5)
+	trap.active = false
+	trap.hits = 1
+	game.gold = 5
+	game._slot_pressed(0, 0, false)
+	assert(trap.active and game.gold == 0 and game.cost == 5)
+	game._apply_traps(test_party, 0)
+	var unused_trap = {"name":"가시", "card":{"name":"가시", "id":998}, "placed_round":1, "active":true, "hits":0}
+	var depleted_trap = {"name":"화살", "card":{"name":"화살", "id":997}, "placed_round":1, "active":false, "hits":2}
+	game.lanes[1].traps[0].append(unused_trap)
+	game.lanes[1].traps[0].append(depleted_trap)
+	var before = game.deck.size()
+	game.lanes[0].rooms[0].append({"name":"검사", "hp":13, "max_hp":24, "placed_round":1})
+	game._wave_won()
+	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 13 and game.deck.size() == before)
+	assert(not trap.active and game.hand.size() == 10)
+	assert(game.gold == 10 and unused_trap.active and unused_trap.hits == 0)
+	assert(not depleted_trap.active and depleted_trap.hits == 2)
+	# Move and rest an actual survivor; resting does not heal until a wave ends.
+	var survivor = game.lanes[0].rooms[0][0]
+	game._set_mode("move")
+	game._soldier_pressed(0, 0, 0)
+	for i in range(4): game.lanes[1].rooms[0].append({"name":"검사", "hp":24, "max_hp":24, "placed_round":1})
+	game._slot_pressed(1, 0, true)
+	assert(game.lanes[0].rooms[0].size() == 1 and game.lanes[1].rooms[0].size() == 4)
+	game.lanes[1].rooms[0].clear()
+	game._slot_pressed(1, 1, true)
+	assert(game.lanes[0].rooms[0].is_empty() and game.lanes[1].rooms[1][0] == survivor)
+	assert(game.cost == game.max_cost and survivor.hp == 13 and game.deck.size() == before)
+	game._set_mode("rest")
+	game._soldier_pressed(1, 1, 0)
+	assert(game.lanes[1].rooms[1].is_empty() and game.reserves.size() == 1 and survivor.hp == 13)
+	# A pending rest can be cancelled without receiving free healing.
+	game._reserve_pressed(0)
+	game._slot_pressed(1, 0, true)
+	assert(game.reserves.is_empty() and survivor.hp == 13)
+	game._set_mode("rest")
+	game._soldier_pressed(1, 0, 0)
+	var nearly_full = {"name":"궁수", "hp":15, "max_hp":16, "placed_round":1}
+	game.reserves.append({"soldier":nearly_full, "ready_round":3, "healed":false})
+	game.speed = 0.001
+	game.parties = [{"lane":0, "units":[{"name":"적", "hp":1, "attack":1}], "pos":-1, "done":false}]
+	game.lanes[0].traps[0][0].active = true
+	game._start_wave()
+	while game.phase == "웨이브": await create_timer(0.01).timeout
+	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
+	assert(game.reserves[1].healed and nearly_full.hp == 16)
+	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
+	game._choose_event("gold")
+	assert(game.round_number == 3)
+	game._reserve_pressed(0)
+	game._slot_pressed(1, 0, true)
+	assert(game.reserves.size() == 1 and game.lanes[1].rooms[0][0].hp == 21 and game.cost == game.max_cost)
+	# Death removes the field unit, but the card stays in the deck.
+	var dead_card = game.deck[0]
+	var original_deck_size = game.deck.size()
+	var doomed = {"name":"검사", "hp":1, "max_hp":24, "placed_round":2, "card":dead_card}
+	game.lanes[0].rooms[0].append(doomed)
+	game._fight({"lane":0, "units":[{"name":"적", "hp":100, "attack":99}]}, 0)
+	assert(game.lanes[0].rooms[0].is_empty() and game.deck.size() == original_deck_size and game.deck.has(dead_card))
+	# A real wave must finish while showing the individual combat actions.
+	game._new_game()
+	game.speed = 0.001
+	game.lanes[0].rooms[0].append({"name":"검사", "hp":24, "max_hp":24, "placed_round":1})
+	game.parties = [{"lane":0, "units":[{"name":"적", "hp":10, "max_hp":10, "attack":1}], "pos":-1, "done":false}]
+	game._start_wave()
+	while game.phase == "웨이브": await create_timer(0.01).timeout
+	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 23)
+	# Starting a new game during the animated fight must cancel the old wave.
+	game._new_game()
+	game.speed = 0.02
+	game.lanes[0].rooms[0].append({"name":"검사", "hp":24, "max_hp":24, "placed_round":1})
+	game.parties = [{"lane":0, "units":[{"name":"적", "hp":100, "max_hp":100, "attack":1}], "pos":-1, "done":false}]
+	game._start_wave()
+	await create_timer(0.06).timeout
+	game._new_game()
+	await create_timer(0.12).timeout
+	assert(game.phase == "준비" and game.round_number == 1 and game.lanes[0].rooms[0].is_empty())
+	game.speed = 0.001
+	game._new_game()
+	game.speed = 0.001
+	game.parties = [{"lane":0, "units":[{"name":"적", "hp":100, "attack":1}], "pos":-1, "done":false}]
+	game._start_wave()
+	while game.phase == "웨이브": await create_timer(0.01).timeout
+	assert(game.phase == "패배")
+	assert(FileAccess.file_exists(game.record_path))
+	game._new_game()
+	for round_index in range(1, 21):
+		assert(game.round_number == round_index)
+		game._wave_won()
+		if game.phase == "보스 보상":
+			if round_index == 10: assert(game.pending_event)
+			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
+			if round_index == 10: assert(game.phase == "이벤트")
+		if game.phase == "이벤트": game._choose_event("gold")
+	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index == 9)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
+	print("CHECK PASSED: 30G start, 10G income, unused traps, per-use rearming, 30% rest healing, free movement, event and 20-round flow")
+	quit()
