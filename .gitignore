@@ -1,0 +1,17 @@
+# Godot local caches and downloaded editor binaries
+/.godot/
+/godot_tmp/
+/export_templates/
+/feature_profiles/
+/script_templates/
+/text_editor_themes/
+
+# Local previews and credentials
+/visual-check.png
+/visual-check.png.import
+/prototype-preview.png
+/.codex/
+/.agents/
+/.aws/
+.env
+.env.*
