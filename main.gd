@@ -2,9 +2,11 @@ extends Control
 
 # Prototype values; see README for the assumptions behind them.
 const CARDS = {
-	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":7, "description":"선두 7 피해"},
-	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":5, "description":"후방 5 피해"},
-	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":4, "description":"전체 4 피해"},
+	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":4, "consumable":false, "description":"선두 1명 4 피해"},
+	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":8, "consumable":true, "description":"#소모성\n후방 2명 각 8 피해"},
+	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
+	"고블린": {"type":"soldier", "cost":1, "hp":20, "attack":5, "description":"HP 20 · 선두 5 피해"},
+	"고블린 궁병": {"type":"soldier", "cost":1, "hp":10, "attack":8, "description":"HP 10 · 선두 8 피해"},
 	"검사": {"type":"soldier", "cost":1, "hp":24, "attack":6, "description":"HP 24 · 선두 6 피해"},
 	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
@@ -73,7 +75,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["검사", "궁수", "마법사"]:
+	for kind in ["검사", "궁수", "마법사", "고블린", "고블린 궁병"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["방패병", "검투사", "궁수", "마법사", "보스"]:
@@ -226,7 +228,7 @@ func _new_game() -> void:
 	moving_soldier.clear()
 	selected_order.clear()
 	next_card_id = 0
-	for card_name in ["가시", "가시", "화살", "낙석", "검사", "검사", "검사", "궁수", "궁수", "마법사", "마법사", "화살"]:
+	for card_name in ["가시", "가시", "화살", "낙석", "검사", "검사", "검사", "고블린", "고블린", "고블린 궁병", "고블린 궁병", "화살"]:
 		_add_card(card_name)
 	lanes = []
 	for lane in range(2):
@@ -544,11 +546,14 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		var targets := _live_enemies(party)
 		if targets.is_empty(): break
 		trap.hits += 1
+		if CARDS[trap.name].get("consumable", false):
+			trap.active = false
 		var damage: int = CARDS[trap.name].damage + trap_bonus
 		if trap.name == "낙석":
 			for unit in targets: _damage_enemy(unit, damage, trap.name)
 		elif trap.name == "화살":
-			_damage_enemy(targets.back(), damage, trap.name)
+			for i in range(maxi(0, targets.size() - 2), targets.size()):
+				_damage_enemy(targets[i], damage, trap.name)
 		else:
 			_damage_enemy(targets.front(), damage, trap.name)
 

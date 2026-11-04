@@ -11,7 +11,9 @@ func check() -> void:
 	assert(game.hand.size() == 10)
 	assert(game.deck.size() == 12)
 	assert(game.gold == 30)
-	assert(game.card_icons.size() == 6 and game.music_player.stream != null)
+	assert(game.card_icons.size() == 8 and game.music_player.stream != null)
+	assert(game.CARDS["고블린"].hp == 20 and game.CARDS["고블린"].attack == 5 and game.CARDS["고블린"].cost == 1)
+	assert(game.CARDS["고블린 궁병"].hp == 10 and game.CARDS["고블린 궁병"].attack == 8 and game.CARDS["고블린 궁병"].cost == 1)
 	game._toggle_music()
 	assert(not game.music_enabled)
 	game._toggle_music()
@@ -135,7 +137,7 @@ func check() -> void:
 	var test_party = {"lane":0, "units":[{"name":"적", "hp":100, "attack":1}]}
 	game._apply_traps(test_party, 0)
 	game._apply_traps(test_party, 0)
-	assert(trap.hits == 2 and test_party.units[0].hp == 86)
+	assert(trap.hits == 2 and test_party.units[0].hp == 92)
 	trap.active = false
 	game.gold = 10
 	game._slot_pressed(0, 0, false)
@@ -199,6 +201,28 @@ func check() -> void:
 	game.lanes[0].rooms[0].append(doomed)
 	game._fight({"lane":0, "units":[{"name":"적", "hp":100, "attack":99}]}, 0)
 	assert(game.lanes[0].rooms[0].is_empty() and game.deck.size() == original_deck_size and game.deck.has(dead_card))
+	# Consumable traps fire once across parties, then work again after rearming.
+	game._new_game()
+	var arrows = {"name":"화살", "active":true, "hits":0, "placed_round":1}
+	game.lanes[0].traps[0].append(arrows)
+	var first_party = {"lane":0, "units":[{"name":"앞", "hp":20}, {"name":"중간", "hp":20}, {"name":"뒤", "hp":20}]}
+	var second_party = {"lane":0, "units":[{"name":"혼자", "hp":20}]}
+	game._apply_traps(first_party, 0)
+	assert(first_party.units[0].hp == 20 and first_party.units[1].hp == 12 and first_party.units[2].hp == 12)
+	assert(not arrows.active and arrows.hits == 1)
+	game._apply_traps(second_party, 0)
+	assert(second_party.units[0].hp == 20 and arrows.hits == 1)
+	game._set_mode("rearm")
+	game._slot_pressed(0, 0, false)
+	assert(arrows.active and arrows.hits == 0 and game.gold == 25)
+	game._apply_traps(second_party, 0)
+	assert(second_party.units[0].hp == 12 and not arrows.active)
+	var rocks = {"name":"낙석", "active":true, "hits":0, "placed_round":1}
+	game.lanes[0].traps[1].append(rocks)
+	var rock_party = {"lane":0, "units":[{"name":"앞", "hp":20}, {"name":"뒤", "hp":20}]}
+	game._apply_traps(rock_party, 1)
+	game._apply_traps(rock_party, 1)
+	assert(rock_party.units[0].hp == 12 and rock_party.units[1].hp == 12 and rocks.hits == 1 and not rocks.active)
 	# A real wave must finish while showing the individual combat actions.
 	game._new_game()
 	game.speed = 0.001
