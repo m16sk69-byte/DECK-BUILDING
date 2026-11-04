@@ -872,16 +872,14 @@ func _finish_research() -> void:
 	var a: Dictionary = card_defs[materials[0].name]
 	var b: Dictionary = card_defs[materials[1].name]
 	var name_value := "키메라 #%d" % next_card_id
-	var result := {"type":"soldier", "cost":roundi((a.cost + b.cost) / 2.0), "hp":a.hp + b.hp, "attack":a.attack + b.attack, "unique_group":"키메라"}
+	var result := {"type":"soldier", "cost":roundi((a.cost + b.cost) / 2.0), "hp":a.hp + b.hp, "attack":a.attack + b.attack}
 	for keyword in ["regen", "lifesteal"]:
 		var amount: int = a.get(keyword, 0) + b.get(keyword, 0)
 		if amount > 0: result[keyword] = amount
-	for keyword in ["unique", "front_only"]:
-		if a.get(keyword, false) or b.get(keyword, false): result[keyword] = true
+	if a.get("front_only", false) or b.get("front_only", false): result["front_only"] = true
 	var description := "HP %d · 공격 %d" % [result.hp, result.attack]
 	if result.get("regen", 0) > 0: description += "\n#재생%d" % result.regen
 	if result.get("lifesteal", 0) > 0: description += " #흡혈%d" % result.lifesteal
-	if result.get("unique", false): description += " #고유"
 	if result.get("front_only", false): description += " 선두 고정"
 	result["description"] = description
 	card_defs[name_value] = result

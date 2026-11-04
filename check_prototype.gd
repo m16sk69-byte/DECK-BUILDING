@@ -416,7 +416,8 @@ func check() -> void:
 	var chimera: Dictionary = game.deck[-1]
 	var chimera_data: Dictionary = game.card_defs[chimera.name]
 	assert(chimera_data.cost == 3 and chimera_data.hp == 50 and chimera_data.attack == 12)
-	assert(chimera_data.regen == 10 and chimera_data.lifesteal == 3 and chimera_data.unique)
+	assert(chimera_data.regen == 10 and chimera_data.lifesteal == 3 and not chimera_data.get("unique", false))
+	assert(not "#고유" in chimera_data.description)
 	# A generated card remains deployable with its calculated stats.
 	if not game.hand.has(chimera):
 		game.draw_pile.erase(chimera)
@@ -426,12 +427,21 @@ func check() -> void:
 	game._slot_pressed(0, 0, true)
 	assert(game.lanes[0].rooms[0][0].max_hp == 50)
 	var chimera_unit: Dictionary = game.lanes[0].rooms[0][0]
-	assert(game._unique_in_play(chimera.name))
+	assert(not game._unique_in_play(chimera.name))
 	chimera_unit.hp = 30
 	game._regenerate_soldiers()
 	assert(chimera_unit.hp == 40)
 	game._fight({"lane":0, "units":[{"name":"적", "hp":12, "attack":0}]}, 0)
 	assert(chimera_unit.hp == 43)
+	# A second copy of the resulting non-unique chimera can be deployed.
+	game._add_card(chimera.name)
+	var second_chimera: Dictionary = game.deck[-1]
+	game.discard_pile.erase(second_chimera)
+	game.hand.append(second_chimera)
+	game.cost = game.max_cost
+	game._select_card(game.hand.find(second_chimera))
+	game._slot_pressed(0, 0, true)
+	assert(game.lanes[0].rooms[0].size() == 2)
 	game._new_game()
 	for round_index in range(1, 21):
 		assert(game.round_number == round_index)
