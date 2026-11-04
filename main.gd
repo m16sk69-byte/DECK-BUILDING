@@ -14,7 +14,9 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
 }
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
-const EVENT_NAMES = ["흡혈귀와의 만남", "보급 창고", "훈련장", "함정 공방", "순찰대", "야전 병원", "전리품 상인", "성벽 수리공", "지원군"]
+const EVENT_NAMES = ["보급 창고", "훈련장", "함정 공방", "순찰대", "야전 병원", "전리품 상인", "성벽 수리공", "지원군", "던전 방문객"]
+const VAMPIRE_EVENT = "흡혈귀와의 만남"
+const NOCTIS_PRICE := 30
 const REST_HEAL_RATE := 0.30
 var rng := RandomNumberGenerator.new()
 var deck: Array = []
@@ -42,6 +44,8 @@ var speed := 0.4
 var played_rounds := 0
 var rewards_used: Array = []
 var event_index := 0
+var ordinary_event_index := 0
+var vampire_event_seen := false
 var pending_event := false
 var current_event := ""
 var next_card_id := 0
@@ -236,6 +240,8 @@ func _new_game() -> void:
 	mode = "card"
 	rewards_used.clear()
 	event_index = 0
+	ordinary_event_index = 0
+	vampire_event_seen = false
 	pending_event = false
 	current_event = ""
 	deck.clear()
@@ -792,13 +798,21 @@ func _heal_all(amount: int) -> void:
 
 func _show_event() -> void:
 	phase = "이벤트"
-	var event_name: String = EVENT_NAMES[event_index]
+	var vampire_eligible := round_number <= 10 and not vampire_event_seen
+	var ordinary_remaining: int = EVENT_NAMES.size() - ordinary_event_index
+	var event_name: String
+	if vampire_eligible and (ordinary_remaining == 0 or rng.randi_range(0, ordinary_remaining) == 0):
+		event_name = VAMPIRE_EVENT
+		vampire_event_seen = true
+	else:
+		event_name = EVENT_NAMES[ordinary_event_index]
+		ordinary_event_index += 1
 	current_event = event_name
 	event_index += 1
 	pending_event = false
 	_clear(options_box)
-	if current_event == "흡혈귀와의 만남":
-		options_box.add_child(_button("녹티스 카드 획득", _choose_event.bind("noctis")))
+	if current_event == VAMPIRE_EVENT:
+		options_box.add_child(_button("녹티스 카드 영입 (30G · 임시)", _choose_event.bind("noctis")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	else:
 		options_box.add_child(_button("골드 5 획득", _choose_event.bind("gold")))
@@ -814,13 +828,18 @@ func _choose_event(choice: String) -> void:
 	if choice == "card" and gold < 4:
 		_log("골드가 부족합니다. 다른 선택지를 고르세요.")
 		return
+	if choice == "noctis" and gold < NOCTIS_PRICE:
+		_log("골드가 부족합니다. 돌아가기를 선택하세요.")
+		return
 	match choice:
 		"gold": gold += 5
 		"heal": _heal_all(8)
 		"card":
 			gold -= 4
 			_add_card("오크")
-		"noctis": _add_card("녹티스")
+		"noctis":
+			gold -= NOCTIS_PRICE
+			_add_card("녹티스")
 	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "noctis":"녹티스 카드 획득", "leave":"돌아가기"}[choice])
 	_clear(options_box)
 	_next_round()

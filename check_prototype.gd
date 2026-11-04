@@ -204,7 +204,7 @@ func check() -> void:
 	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
 	assert(game.reserves[1].healed and nearly_full.hp == 16)
 	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
-	game._choose_event("leave")
+	game._choose_event("leave" if game.current_event == game.VAMPIRE_EVENT else "gold")
 	assert(game.round_number == 3)
 	game._reserve_pressed(0)
 	game._slot_pressed(1, 0, true)
@@ -345,11 +345,40 @@ func check() -> void:
 	game.lanes[0].rooms[0].append(noctis)
 	game._fight({"lane":0, "units":[{"name":"적", "hp":12, "attack":1}]}, 0)
 	assert(noctis.hp == 15)
-	# Noctis is earned through the vampire event, not the starting deck.
+	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
-	game._show_event()
-	assert(game.current_event == "흡혈귀와의 만남")
+	var found_vampire := false
+	var found_normal := false
+	for seed_value in range(30):
+		game.ordinary_event_index = 0
+		game.vampire_event_seen = false
+		game.rng.seed = seed_value
+		game.round_number = 10
+		game._show_event()
+		if game.current_event == game.VAMPIRE_EVENT:
+			found_vampire = true
+			game.round_number = 10
+			game._show_event()
+			assert(game.current_event != game.VAMPIRE_EVENT)
+		else: found_normal = true
+	assert(found_vampire and found_normal)
+	for seed_value in range(3):
+		game.ordinary_event_index = 0
+		game.vampire_event_seen = false
+		game.rng.seed = seed_value
+		game.round_number = 12
+		game._show_event()
+		assert(game.current_event != game.VAMPIRE_EVENT)
+	game._new_game()
+	game.phase = "이벤트"
+	game.current_event = game.VAMPIRE_EVENT
+	game.gold = 29
+	var deck_before_purchase: int = game.deck.size()
 	game._choose_event("noctis")
+	assert(game.phase == "이벤트" and game.gold == 29 and game.deck.size() == deck_before_purchase)
+	game.gold = 30
+	game._choose_event("noctis")
+	assert(game.gold == 0 and game.deck.size() == deck_before_purchase + 1)
 	assert(game.deck.any(func(card): return card.name == "녹티스"))
 	game._new_game()
 	for round_index in range(1, 21):
