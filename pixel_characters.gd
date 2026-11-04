@@ -60,7 +60,9 @@ const PATTERNS = {
 
 static func _base_kind(kind: String) -> String:
 	if kind == "고블린": return "검사"
-	if kind == "고블린 궁병": return "궁수"
+	if kind == "고블린 궁수": return "궁수"
+	if kind == "오크" or kind == "언데드 골렘": return "검사"
+	if kind == "녹티스": return "마법사"
 	if kind == "방패병" or kind == "검투사" or kind == "보스": return "검사"
 	return kind if PATTERNS.has(kind) else "검사"
 
@@ -72,8 +74,11 @@ static func make_image(kind: String, enemy := false) -> Image:
 		"E":Color("263044"), "B":Color("58b9d0"), "G":Color("80c894"),
 		"P":Color("b69bed"), "Y":Color("f9d779"),
 	}
-	if kind == "고블린" or kind == "고블린 궁병":
+	if kind == "고블린" or kind == "고블린 궁수":
 		palette["S"] = Color("9ed271")
+	if kind == "오크": palette["S"] = Color("70a86d")
+	if kind == "언데드 골렘": palette["S"] = Color("91aaa0")
+	if kind == "녹티스": palette["S"] = Color("e1d0dc")
 	if enemy:
 		palette["B"] = Color("e67e70")
 		palette["G"] = Color("d9976f")

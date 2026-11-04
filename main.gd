@@ -6,17 +6,21 @@ const CARDS = {
 	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":8, "consumable":true, "description":"#소모성\n후방 2명 각 8 피해"},
 	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
 	"고블린": {"type":"soldier", "cost":1, "hp":20, "attack":5, "description":"HP 20 · 선두 5 피해"},
-	"고블린 궁병": {"type":"soldier", "cost":1, "hp":10, "attack":8, "description":"HP 10 · 선두 8 피해"},
-	"검사": {"type":"soldier", "cost":1, "hp":24, "attack":6, "description":"HP 24 · 선두 6 피해"},
+	"고블린 궁수": {"type":"soldier", "cost":1, "hp":10, "attack":8, "description":"HP 10 · 선두 8 피해"},
+	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
+	"오크": {"type":"soldier", "cost":2, "hp":25, "attack":10, "front_only":true, "description":"HP 25 · 공격 10\n선두 고정"},
+	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
 }
-const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "덱에 검사 2장 추가", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
-const EVENT_NAMES = ["용병 방문", "보급 창고", "훈련장", "함정 공방", "순찰대", "야전 병원", "전리품 상인", "성벽 수리공", "지원군"]
+const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
+const EVENT_NAMES = ["흡혈귀와의 만남", "보급 창고", "훈련장", "함정 공방", "순찰대", "야전 병원", "전리품 상인", "성벽 수리공", "지원군"]
 const REST_HEAL_RATE := 0.30
 var rng := RandomNumberGenerator.new()
 var deck: Array = []
 var hand: Array = []
+var draw_pile: Array = []
+var discard_pile: Array = []
 var lanes: Array = []
 var parties: Array = []
 var reserves: Array = []
@@ -39,6 +43,7 @@ var played_rounds := 0
 var rewards_used: Array = []
 var event_index := 0
 var pending_event := false
+var current_event := ""
 var next_card_id := 0
 var wave_token := 0
 var record_path := "user://runs.json"
@@ -75,7 +80,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["검사", "궁수", "마법사", "고블린", "고블린 궁병"]:
+	for kind in ["궁수", "마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["방패병", "검투사", "궁수", "마법사", "보스"]:
@@ -199,9 +204,19 @@ func _build_ui() -> void:
 	log_box.scroll_following = true
 	root.add_child(log_box)
 
-func _add_card(name_value: String) -> void:
-	deck.append({"id":next_card_id, "name":name_value})
+func _add_card(name_value: String, initial := false) -> void:
+	var card := {"id":next_card_id, "name":name_value}
+	deck.append(card)
+	if initial: draw_pile.append(card)
+	else: discard_pile.append(card)
 	next_card_id += 1
+
+func _shuffle_draw_pile() -> void:
+	for i in range(draw_pile.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = draw_pile[i]
+		draw_pile[i] = draw_pile[j]
+		draw_pile[j] = tmp
 
 func _new_game() -> void:
 	wave_token += 1
@@ -222,14 +237,18 @@ func _new_game() -> void:
 	rewards_used.clear()
 	event_index = 0
 	pending_event = false
+	current_event = ""
 	deck.clear()
 	hand.clear()
+	draw_pile.clear()
+	discard_pile.clear()
 	reserves.clear()
 	moving_soldier.clear()
 	selected_order.clear()
 	next_card_id = 0
-	for card_name in ["가시", "가시", "화살", "낙석", "검사", "검사", "검사", "고블린", "고블린", "고블린 궁병", "고블린 궁병", "화살"]:
-		_add_card(card_name)
+	for card_name in ["가시", "가시", "가시", "화살", "낙석", "고블린", "고블린", "고블린", "고블린", "고블린 궁수"]:
+		_add_card(card_name, true)
+	_shuffle_draw_pile()
 	lanes = []
 	for lane in range(2):
 		lanes.append({"traps":[[], []], "rooms":[[], []]})
@@ -238,24 +257,35 @@ func _new_game() -> void:
 	_prepare_round()
 	_log("새 게임. 수치는 임시값입니다. 적 경로를 확인하고 방어선을 배치하세요.")
 
-func _draw_hand() -> void:
-	var available := []
-	for card in deck:
-		var already := false
-		for held in hand:
-			if held.id == card.id:
-				already = true
-		if not already:
-			available.append(card)
-	while hand.size() < 10 and not available.is_empty():
-		var index := rng.randi_range(0, available.size() - 1)
-		hand.append(available.pop_at(index))
+func _draw_hand(amount := 5) -> void:
+	for i in range(amount):
+		if draw_pile.is_empty():
+			if discard_pile.is_empty(): break
+			draw_pile.append_array(discard_pile)
+			discard_pile.clear()
+			_shuffle_draw_pile()
+		hand.append(draw_pile.pop_back())
+
+func _discard_hand() -> void:
+	discard_pile.append_array(hand)
+	hand.clear()
+
+func _regenerate_soldiers() -> void:
+	for lane in lanes:
+		for room in lane.rooms:
+			for soldier in room:
+				var amount: int = CARDS[soldier.name].get("regen", 0)
+				if amount > 0:
+					var restored: int = mini(amount, soldier.max_hp - soldier.hp)
+					soldier.hp += restored
+					if restored > 0: _log("%s #재생: 체력 %d 회복" % [soldier.name, restored])
 
 func _prepare_round() -> void:
 	phase = "준비"
 	cost = max_cost
 	selected_card = -1
 	mode = "card"
+	_regenerate_soldiers()
 	_draw_hand()
 	_generate_parties()
 	_refresh()
@@ -284,8 +314,28 @@ func _set_mode(value: String) -> void:
 	selected_card = -1
 	_refresh()
 
+func _unique_in_play(name_value: String) -> bool:
+	if not CARDS[name_value].get("unique", false): return false
+	for lane in lanes:
+		for room in lane.rooms:
+			for soldier in room:
+				if soldier.name == name_value and soldier.hp > 0: return true
+	for entry in reserves:
+		if entry.soldier.name == name_value and entry.soldier.hp > 0: return true
+	return false
+
+func _front_allowed(name_value: String, room: Array) -> bool:
+	return not CARDS[name_value].get("front_only", false) or room.is_empty() or not CARDS[room[0].name].get("front_only", false)
+
+func _put_soldier(room: Array, soldier: Dictionary) -> void:
+	if CARDS[soldier.name].get("front_only", false): room.push_front(soldier)
+	else: room.append(soldier)
+
 func _select_card(index: int) -> void:
-	if phase != "준비": return
+	if phase != "준비" or index < 0 or index >= hand.size(): return
+	if _unique_in_play(hand[index].name):
+		_log("#고유: %s이(가) 이미 배치 또는 휴식 중입니다." % hand[index].name)
+		return
 	moving_soldier.clear()
 	selected_order.clear()
 	mode = "card"
@@ -308,6 +358,11 @@ func _soldier_pressed(lane: int, slot: int, index: int) -> void:
 		else:
 			var old_index: int = selected_order.index
 			if old_index != index:
+				if (old_index == 0 or index == 0) and CARDS[soldiers[0].name].get("front_only", false):
+					_log("%s은(는) 선두에 고정됩니다." % soldiers[0].name)
+					selected_order.clear()
+					_refresh()
+					return
 				var moved: Dictionary = soldiers.pop_at(old_index)
 				soldiers.insert(index, moved)
 				_log("%s 순서 변경: %d번 → %d번" % [moved.name, old_index + 1, index + 1])
@@ -344,6 +399,7 @@ func _remove_trap(lane: int, slot: int, index: int) -> void:
 	var trap: Dictionary = traps.pop_at(index)
 	if trap.placed_round == round_number:
 		cost += CARDS[trap.name].cost
+		discard_pile.erase(trap.card)
 		hand.append(trap.card)
 		cards_used -= 1
 		_log("%s 배치 취소: 카드와 코스트 반환" % trap.name)
@@ -373,10 +429,14 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		if placements.size() >= 4:
 			_log("방에는 최대 4명을 배치할 수 있습니다.")
 			return
-		var entry: Dictionary = source.pop_at(moving_soldier.index)
+		var entry: Dictionary = source[moving_soldier.index]
 		var soldier: Dictionary = entry.soldier if moving_soldier.source == "reserve" else entry
+		if not _front_allowed(soldier.name, placements):
+			_log("선두 고정 병사는 같은 방에 둘 수 없습니다.")
+			return
+		source.pop_at(moving_soldier.index)
 		if moving_soldier.source == "reserve": soldier.placed_round = round_number - 1
-		placements.append(soldier)
+		_put_soldier(placements, soldier)
 		moving_soldier.clear()
 		_log("%s 무료 이동: 체력 %d/%d" % [soldier.name, soldier.hp, soldier.max_hp])
 	elif mode == "rest":
@@ -388,12 +448,17 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		if not is_room:
 			_remove_trap(lane, slot, placements.size() - 1)
 			return
-		var target: Dictionary = placements.back()
-		if target.placed_round != round_number:
+		var target_index := -1
+		for i in range(placements.size() - 1, -1, -1):
+			if placements[i].placed_round == round_number:
+				target_index = i
+				break
+		if target_index < 0:
 			_log("이전 라운드의 병사는 병사 휴식으로 회수하세요.")
 			return
-		placements.pop_back()
+		var target: Dictionary = placements.pop_at(target_index)
 		cost += CARDS[target.name].cost
+		discard_pile.erase(target.card)
 		hand.append(target.card)
 		cards_used -= 1
 		_log("%s 회수: 코스트 반환" % target.name)
@@ -419,6 +484,9 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			return
 		var card: Dictionary = hand[selected_card]
 		var data: Dictionary = CARDS[card.name]
+		if _unique_in_play(card.name):
+			_log("#고유: 같은 병사를 중복 배치할 수 없습니다.")
+			return
 		if (data.type == "soldier") != is_room:
 			_log("병사는 방에, 함정은 통로에 배치합니다.")
 			return
@@ -427,6 +495,9 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			return
 		if is_room and placements.size() >= 4:
 			_log("방에는 최대 4명을 배치합니다.")
+			return
+		if is_room and not _front_allowed(card.name, placements):
+			_log("선두 고정 병사는 같은 방에 둘 수 없습니다.")
 			return
 		if not is_room:
 			for existing in placements:
@@ -440,10 +511,12 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		else:
 			placed["active"] = true
 			placed["hits"] = 0
-		placements.append(placed)
+		if is_room: _put_soldier(placements, placed)
+		else: placements.append(placed)
 		cost -= data.cost
 		cards_used += 1
 		hand.remove_at(selected_card)
+		discard_pile.append(card)
 		selected_card = -1
 		_log("%s 배치" % card.name)
 	_refresh()
@@ -455,7 +528,7 @@ func _log(value: String) -> void:
 
 func _refresh() -> void:
 	if not summary: return
-	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   덱 %d장" % [round_number, phase, cost, max_cost, gold, deck.size()]
+	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [round_number, phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
 	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"지도 아래 함정 선택해 철거 · 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭"}
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	start_button.disabled = phase != "준비"
@@ -518,6 +591,14 @@ func _refresh() -> void:
 		var text_value: String = "%s%s\n비용 %d\n%s" % ["▶" if selected_card == i else "", card.name, data.cost, data.description]
 		if data.type == "trap": text_value += "\n" + data.slot
 		var card_button := _button(text_value, _select_card.bind(i))
+		var keyword_help := ""
+		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
+		if data.get("regen", 0) > 0: keyword_help += "#재생: 매 라운드 준비 시작 시 표시된 만큼 회복합니다.\n"
+		if data.get("lifesteal", 0) > 0: keyword_help += "#흡혈: 공격할 때 표시된 만큼 회복합니다.\n"
+		if data.get("unique", false): keyword_help += "#고유: 같은 병사가 배치 또는 휴식 중이면 배치할 수 없습니다.\n"
+		card_button.tooltip_text = keyword_help
+		if _unique_in_play(card.name):
+			card_button.disabled = true
 		card_button.custom_minimum_size = Vector2(120, 158)
 		if card_icons.has(card.name):
 			card_button.icon = card_icons[card.name]
@@ -574,6 +655,11 @@ func _fight(party: Dictionary, slot: int) -> void:
 					for enemy in _live_enemies(party): _damage_enemy(enemy, attack, ally.name)
 				else:
 					_damage_enemy(_live_enemies(party).front(), attack, ally.name)
+				var lifesteal: int = CARDS[ally.name].get("lifesteal", 0)
+				if lifesteal > 0:
+					var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
+					ally.hp += restored
+					if restored > 0: _log("%s #흡혈: 체력 %d 회복" % [ally.name, restored])
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
@@ -595,6 +681,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 
 func _start_wave() -> void:
 	if phase != "준비": return
+	_discard_hand()
 	moving_soldier.clear()
 	selected_order.clear()
 	phase = "웨이브"
@@ -685,9 +772,7 @@ func _choose_reward(reward: String) -> void:
 		"모든 함정 피해 +2": trap_bonus += 2
 		"골드 +12": gold += 12
 		"모든 병사 체력 10 회복": _heal_all(10)
-		"덱에 검사 2장 추가":
-			_add_card("검사")
-			_add_card("검사")
+		"언데드 골렘 카드 획득": _add_card("언데드 골렘")
 		"덱에 낙석 2장 추가":
 			_add_card("낙석")
 			_add_card("낙석")
@@ -708,17 +793,24 @@ func _heal_all(amount: int) -> void:
 func _show_event() -> void:
 	phase = "이벤트"
 	var event_name: String = EVENT_NAMES[event_index]
+	current_event = event_name
 	event_index += 1
 	pending_event = false
 	_clear(options_box)
-	options_box.add_child(_button("골드 5 획득", _choose_event.bind("gold")))
-	options_box.add_child(_button("병사 전원 8 회복", _choose_event.bind("heal")))
-	options_box.add_child(_button("검사 카드 영입 (4G)", _choose_event.bind("card")))
+	if current_event == "흡혈귀와의 만남":
+		options_box.add_child(_button("녹티스 카드 획득", _choose_event.bind("noctis")))
+		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
+	else:
+		options_box.add_child(_button("골드 5 획득", _choose_event.bind("gold")))
+		options_box.add_child(_button("병사 전원 8 회복", _choose_event.bind("heal")))
+		options_box.add_child(_button("오크 카드 영입 (4G · 임시)", _choose_event.bind("card")))
 	_log("이벤트: %s · 선택지 하나를 고르세요." % event_name)
 	_refresh()
 
 func _choose_event(choice: String) -> void:
 	if phase != "이벤트": return
+	if current_event == "흡혈귀와의 만남" and choice not in ["noctis", "leave"]: return
+	if current_event != "흡혈귀와의 만남" and choice not in ["gold", "heal", "card"]: return
 	if choice == "card" and gold < 4:
 		_log("골드가 부족합니다. 다른 선택지를 고르세요.")
 		return
@@ -727,8 +819,9 @@ func _choose_event(choice: String) -> void:
 		"heal": _heal_all(8)
 		"card":
 			gold -= 4
-			_add_card("검사")
-	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"검사 카드 영입"}[choice])
+			_add_card("오크")
+		"noctis": _add_card("녹티스")
+	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "noctis":"녹티스 카드 획득", "leave":"돌아가기"}[choice])
 	_clear(options_box)
 	_next_round()
 
