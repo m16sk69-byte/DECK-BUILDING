@@ -14,7 +14,7 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
 }
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
-const EVENT_NAMES = ["보급 창고", "훈련장", "함정 공방", "순찰대", "야전 병원", "전리품 상인", "성벽 수리공", "지원군", "던전 방문객"]
+const TEST_EVENTS = ["시험 이벤트 1", "시험 이벤트 2", "시험 이벤트 3", "시험 이벤트 4"]
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
 const NOCTIS_PRICE := 30
 const REST_HEAL_RATE := 0.30
@@ -44,8 +44,7 @@ var speed := 0.4
 var played_rounds := 0
 var rewards_used: Array = []
 var event_index := 0
-var ordinary_event_index := 0
-var vampire_event_seen := false
+var seen_events: Array = []
 var pending_event := false
 var current_event := ""
 var next_card_id := 0
@@ -240,8 +239,7 @@ func _new_game() -> void:
 	mode = "card"
 	rewards_used.clear()
 	event_index = 0
-	ordinary_event_index = 0
-	vampire_event_seen = false
+	seen_events.clear()
 	pending_event = false
 	current_event = ""
 	deck.clear()
@@ -796,35 +794,50 @@ func _heal_all(amount: int) -> void:
 		var soldier: Dictionary = entry.soldier
 		soldier.hp = mini(soldier.max_hp, soldier.hp + amount)
 
+func _eligible_events() -> Array:
+	var eligible: Array = []
+	for event_name in TEST_EVENTS:
+		if not seen_events.has(event_name): eligible.append(event_name)
+	if round_number <= 10 and not seen_events.has(VAMPIRE_EVENT):
+		eligible.append(VAMPIRE_EVENT)
+	return eligible
+
+func _random_event(eligible: Array):
+	if eligible.is_empty(): return null
+	return eligible[rng.randi_range(0, eligible.size() - 1)]
+
 func _show_event() -> void:
+	var eligible := _eligible_events()
+	pending_event = false
+	if eligible.is_empty():
+		_log("등장 가능한 시험 이벤트가 없어 다음 라운드로 진행합니다.")
+		_next_round()
+		return
 	phase = "이벤트"
-	var vampire_eligible := round_number <= 10 and not vampire_event_seen
-	var ordinary_remaining: int = EVENT_NAMES.size() - ordinary_event_index
-	var event_name: String
-	if vampire_eligible and (ordinary_remaining == 0 or rng.randi_range(0, ordinary_remaining) == 0):
-		event_name = VAMPIRE_EVENT
-		vampire_event_seen = true
-	else:
-		event_name = EVENT_NAMES[ordinary_event_index]
-		ordinary_event_index += 1
+	var event_name: String = _random_event(eligible)
+	seen_events.append(event_name)
 	current_event = event_name
 	event_index += 1
-	pending_event = false
 	_clear(options_box)
 	if current_event == VAMPIRE_EVENT:
 		options_box.add_child(_button("녹티스 카드 영입 (30G · 임시)", _choose_event.bind("noctis")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	else:
-		options_box.add_child(_button("골드 5 획득", _choose_event.bind("gold")))
-		options_box.add_child(_button("병사 전원 8 회복", _choose_event.bind("heal")))
-		options_box.add_child(_button("오크 카드 영입 (4G · 임시)", _choose_event.bind("card")))
+		match current_event:
+			"시험 이벤트 1": options_box.add_child(_button("골드 5 획득 (시험)", _choose_event.bind("gold")))
+			"시험 이벤트 2": options_box.add_child(_button("병사 전원 8 회복 (시험)", _choose_event.bind("heal")))
+			"시험 이벤트 3": options_box.add_child(_button("오크 카드 영입 (4G · 시험)", _choose_event.bind("card")))
+			"시험 이벤트 4": options_box.add_child(_button("화살 함정 카드 획득 (시험)", _choose_event.bind("arrow")))
+		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	_log("이벤트: %s · 선택지 하나를 고르세요." % event_name)
 	_refresh()
 
 func _choose_event(choice: String) -> void:
 	if phase != "이벤트": return
 	if current_event == "흡혈귀와의 만남" and choice not in ["noctis", "leave"]: return
-	if current_event != "흡혈귀와의 만남" and choice not in ["gold", "heal", "card"]: return
+	if current_event != VAMPIRE_EVENT:
+		var allowed := {"시험 이벤트 1":"gold", "시험 이벤트 2":"heal", "시험 이벤트 3":"card", "시험 이벤트 4":"arrow"}
+		if choice != "leave" and choice != allowed.get(current_event, ""): return
 	if choice == "card" and gold < 4:
 		_log("골드가 부족합니다. 다른 선택지를 고르세요.")
 		return
@@ -840,7 +853,8 @@ func _choose_event(choice: String) -> void:
 		"noctis":
 			gold -= NOCTIS_PRICE
 			_add_card("녹티스")
-	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "noctis":"녹티스 카드 획득", "leave":"돌아가기"}[choice])
+		"arrow": _add_card("화살")
+	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "arrow":"화살 함정 카드 획득", "noctis":"녹티스 카드 획득", "leave":"돌아가기"}[choice])
 	_clear(options_box)
 	_next_round()
 

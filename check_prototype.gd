@@ -204,7 +204,7 @@ func check() -> void:
 	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
 	assert(game.reserves[1].healed and nearly_full.hp == 16)
 	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
-	game._choose_event("leave" if game.current_event == game.VAMPIRE_EVENT else "gold")
+	game._choose_event("leave")
 	assert(game.round_number == 3)
 	game._reserve_pressed(0)
 	game._slot_pressed(1, 0, true)
@@ -347,28 +347,23 @@ func check() -> void:
 	assert(noctis.hp == 15)
 	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
-	var found_vampire := false
-	var found_normal := false
-	for seed_value in range(30):
-		game.ordinary_event_index = 0
-		game.vampire_event_seen = false
-		game.rng.seed = seed_value
-		game.round_number = 10
-		game._show_event()
-		if game.current_event == game.VAMPIRE_EVENT:
-			found_vampire = true
-			game.round_number = 10
-			game._show_event()
-			assert(game.current_event != game.VAMPIRE_EVENT)
-		else: found_normal = true
-	assert(found_vampire and found_normal)
-	for seed_value in range(3):
-		game.ordinary_event_index = 0
-		game.vampire_event_seen = false
-		game.rng.seed = seed_value
-		game.round_number = 12
-		game._show_event()
-		assert(game.current_event != game.VAMPIRE_EVENT)
+	game.round_number = 10
+	assert(game._eligible_events().size() == 5 and game._eligible_events().has(game.VAMPIRE_EVENT))
+	# Check selection with the current and larger candidate pools.
+	game.rng.seed = 143
+	for pool_size in [5, 19, 20]:
+		var pool := []
+		var sample_counts := []
+		for i in range(pool_size):
+			pool.append(i)
+			sample_counts.append(0)
+		for i in range(20000): sample_counts[game._random_event(pool)] += 1
+		for count in sample_counts: assert(absf(float(count) - 20000.0 / pool_size) < 20000.0 / pool_size * 0.2)
+	assert(game._random_event([]) == null)
+	game._show_event()
+	assert(not game._eligible_events().has(game.current_event) and game._eligible_events().size() == 4)
+	game.round_number = 12
+	assert(not game._eligible_events().has(game.VAMPIRE_EVENT))
 	game._new_game()
 	game.phase = "이벤트"
 	game.current_event = game.VAMPIRE_EVENT
@@ -380,6 +375,18 @@ func check() -> void:
 	game._choose_event("noctis")
 	assert(game.gold == 0 and game.deck.size() == deck_before_purchase + 1)
 	assert(game.deck.any(func(card): return card.name == "녹티스"))
+	# All four temporary events apply their own effects and allow leaving.
+	game._new_game()
+	game.gold = 10
+	var wounded = {"name":"고블린", "hp":10, "max_hp":20, "placed_round":0}
+	game.lanes[0].rooms[0].append(wounded)
+	for event in [["시험 이벤트 1", "gold"], ["시험 이벤트 2", "heal"], ["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
+		game.phase = "이벤트"
+		game.current_event = event[0]
+		game._choose_event(event[1])
+	assert(game.gold == 11 and wounded.hp == 18)
+	assert(game.deck.any(func(card): return card.name == "오크"))
+	assert(game.deck.filter(func(card): return card.name == "화살").size() == 2)
 	game._new_game()
 	for round_index in range(1, 21):
 		assert(game.round_number == round_index)
@@ -389,8 +396,8 @@ func check() -> void:
 			if round_index == 10: assert(game.pending_event)
 			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
 			if round_index == 10: assert(game.phase == "이벤트")
-		if game.phase == "이벤트": game._choose_event("leave" if game.current_event == "흡혈귀와의 만남" else "gold")
-	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index == 9)
+		if game.phase == "이벤트": game._choose_event("leave")
+	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index == 5)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
 	print("CHECK PASSED: deck and discard cycling, trap rearming, regeneration, lifesteal, unique units, front locking, rest and 20-round flow")
 	quit()
