@@ -14,7 +14,7 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
 }
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
-const TEST_EVENTS = ["가능성 연구", "시험 이벤트 2", "시험 이벤트 3", "시험 이벤트 4"]
+const TEST_EVENTS = ["가능성 연구", "강화 의식", "시험 이벤트 3", "시험 이벤트 4"]
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
 const NOCTIS_PRICE := 30
 const RESEARCH_PRICE := 70
@@ -897,6 +897,28 @@ func _finish_research() -> void:
 	_clear(options_box)
 	_next_round()
 
+func _apply_ritual() -> bool:
+	var candidates := _research_candidates()
+	if candidates.is_empty():
+		_log("덱에 강화할 병사 카드가 없습니다.")
+		return false
+	var card: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)]
+	var old_name: String = card.name
+	var data: Dictionary = card_defs[old_name].duplicate(true)
+	var keyword: String = ["regen", "lifesteal"][rng.randi_range(0, 1)]
+	var amount := 10 if keyword == "regen" else 3
+	data[keyword] = data.get(keyword, 0) + amount
+	data["unique_group"] = data.get("unique_group", old_name)
+	var new_name := "%s [강화 #%d]" % [old_name, card.id]
+	var keyword_label := "#재생%d" % amount if keyword == "regen" else "#흡혈%d" % amount
+	data["description"] += "\n추가 " + keyword_label
+	card_defs[new_name] = data
+	if card_icons.has(old_name): card_icons[new_name] = card_icons[old_name]
+	if sprite_icons.has(old_name): sprite_icons[new_name] = sprite_icons[old_name]
+	card.name = new_name
+	_log("강화 의식: %s 카드에 %s 부여" % [old_name, keyword_label])
+	return true
+
 func _show_event() -> void:
 	var eligible := _eligible_events()
 	pending_event = false
@@ -916,7 +938,7 @@ func _show_event() -> void:
 	else:
 		match current_event:
 			"가능성 연구": options_box.add_child(_button("병사 카드 2장 합성 (70G)", _start_research))
-			"시험 이벤트 2": options_box.add_child(_button("병사 전원 8 회복 (시험)", _choose_event.bind("heal")))
+			"강화 의식": options_box.add_child(_button("무작위 병사 강화 (0G)", _choose_event.bind("ritual")))
 			"시험 이벤트 3": options_box.add_child(_button("오크 카드 영입 (4G · 시험)", _choose_event.bind("card")))
 			"시험 이벤트 4": options_box.add_child(_button("화살 함정 카드 획득 (시험)", _choose_event.bind("arrow")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
@@ -927,7 +949,7 @@ func _choose_event(choice: String) -> void:
 	if phase != "이벤트": return
 	if current_event == "흡혈귀와의 만남" and choice not in ["noctis", "leave"]: return
 	if current_event != VAMPIRE_EVENT:
-		var allowed := {"시험 이벤트 2":"heal", "시험 이벤트 3":"card", "시험 이벤트 4":"arrow"}
+		var allowed := {"강화 의식":"ritual", "시험 이벤트 3":"card", "시험 이벤트 4":"arrow"}
 		if choice != "leave" and choice != allowed.get(current_event, ""): return
 	if choice == "card" and gold < 4:
 		_log("골드가 부족합니다. 다른 선택지를 고르세요.")
@@ -935,6 +957,7 @@ func _choose_event(choice: String) -> void:
 	if choice == "noctis" and gold < NOCTIS_PRICE:
 		_log("골드가 부족합니다. 돌아가기를 선택하세요.")
 		return
+	if choice == "ritual" and not _apply_ritual(): return
 	match choice:
 		"gold": gold += 5
 		"heal": _heal_all(8)
@@ -945,7 +968,7 @@ func _choose_event(choice: String) -> void:
 			gold -= NOCTIS_PRICE
 			_add_card("녹티스")
 		"arrow": _add_card("화살")
-	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "arrow":"화살 함정 카드 획득", "noctis":"녹티스 카드 획득", "leave":"돌아가기"}[choice])
+	_log("이벤트 선택: " + {"gold":"골드 5 획득", "heal":"병사 전원 8 회복", "card":"오크 카드 영입", "arrow":"화살 함정 카드 획득", "noctis":"녹티스 카드 획득", "ritual":"강화 의식", "leave":"돌아가기"}[choice])
 	_clear(options_box)
 	_next_round()
 

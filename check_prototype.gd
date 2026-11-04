@@ -375,18 +375,42 @@ func check() -> void:
 	game._choose_event("noctis")
 	assert(game.gold == 0 and game.deck.size() == deck_before_purchase + 1)
 	assert(game.deck.any(func(card): return card.name == "녹티스"))
-	# The remaining three temporary events apply their own effects.
+	# The remaining two temporary events apply their own effects.
 	game._new_game()
 	game.gold = 10
 	var wounded = {"name":"고블린", "hp":10, "max_hp":20, "placed_round":0}
 	game.lanes[0].rooms[0].append(wounded)
-	for event in [["시험 이벤트 2", "heal"], ["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
+	for event in [["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
 		game.phase = "이벤트"
 		game.current_event = event[0]
 		game._choose_event(event[1])
-	assert(game.gold == 6 and wounded.hp == 18)
+	assert(game.gold == 6 and wounded.hp == 10)
 	assert(game.deck.any(func(card): return card.name == "오크"))
 	assert(game.deck.filter(func(card): return card.name == "화살").size() == 2)
+	# Ritual upgrades exactly one random deck card without adding #unique.
+	game._new_game()
+	game._add_card("녹티스")
+	var unique_card: Dictionary = game.deck[-1]
+	game.deck = [unique_card]
+	game.phase = "이벤트"
+	game.current_event = "강화 의식"
+	game.gold = 0
+	game._choose_event("ritual")
+	assert(game.gold == 0 and game.deck.size() == 1 and unique_card.name != "녹티스")
+	var upgraded: Dictionary = game.card_defs[unique_card.name]
+	assert(upgraded.unique and upgraded.unique_group == "녹티스")
+	assert((upgraded.get("regen", 0) == 10 and upgraded.lifesteal == 3) or upgraded.lifesteal == 6)
+	game.lanes[0].rooms[0].append({"name":"녹티스", "hp":20})
+	assert(game._unique_in_play(unique_card.name))
+	game._new_game()
+	var initial_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[0]
+	var other_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[1]
+	game.deck = [initial_card, other_card]
+	assert(game._apply_ritual())
+	var changed: Array = game.deck.filter(func(card): return card.name != "고블린")
+	assert(changed.size() == 1 and not game.card_defs[changed[0].name].get("unique", false))
+	game.deck.clear()
+	assert(not game._apply_ritual())
 	# Research keeps the deck and gold untouched until two distinct cards are confirmed.
 	game._new_game()
 	game._add_card("언데드 골렘")
