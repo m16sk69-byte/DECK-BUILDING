@@ -375,18 +375,63 @@ func check() -> void:
 	game._choose_event("noctis")
 	assert(game.gold == 0 and game.deck.size() == deck_before_purchase + 1)
 	assert(game.deck.any(func(card): return card.name == "녹티스"))
-	# All four temporary events apply their own effects and allow leaving.
+	# The remaining three temporary events apply their own effects.
 	game._new_game()
 	game.gold = 10
 	var wounded = {"name":"고블린", "hp":10, "max_hp":20, "placed_round":0}
 	game.lanes[0].rooms[0].append(wounded)
-	for event in [["시험 이벤트 1", "gold"], ["시험 이벤트 2", "heal"], ["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
+	for event in [["시험 이벤트 2", "heal"], ["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
 		game.phase = "이벤트"
 		game.current_event = event[0]
 		game._choose_event(event[1])
-	assert(game.gold == 11 and wounded.hp == 18)
+	assert(game.gold == 6 and wounded.hp == 18)
 	assert(game.deck.any(func(card): return card.name == "오크"))
 	assert(game.deck.filter(func(card): return card.name == "화살").size() == 2)
+	# Research keeps the deck and gold untouched until two distinct cards are confirmed.
+	game._new_game()
+	game._add_card("언데드 골렘")
+	game._add_card("녹티스")
+	var material_a: Dictionary = game.deck[-2]
+	var material_b: Dictionary = game.deck[-1]
+	game.discard_pile.erase(material_a)
+	game.draw_pile.append(material_a)
+	game.phase = "이벤트"
+	game.current_event = "가능성 연구"
+	game.gold = 69
+	game._start_research()
+	assert(game.research_selected.is_empty())
+	game.gold = 70
+	var research_size: int = game.deck.size()
+	game._start_research()
+	game._select_research_card(material_a.id)
+	game._select_research_card(material_b.id)
+	game._cancel_research()
+	assert(game.gold == 70 and game.deck.size() == research_size and game.research_selected.is_empty())
+	game._start_research()
+	game._select_research_card(material_a.id)
+	game._select_research_card(material_b.id)
+	game._finish_research()
+	assert(game.gold == 0 and game.deck.size() == research_size - 1)
+	assert(not game.deck.has(material_a) and not game.draw_pile.has(material_a) and not game.discard_pile.has(material_b))
+	var chimera: Dictionary = game.deck[-1]
+	var chimera_data: Dictionary = game.card_defs[chimera.name]
+	assert(chimera_data.cost == 3 and chimera_data.hp == 50 and chimera_data.attack == 12)
+	assert(chimera_data.regen == 10 and chimera_data.lifesteal == 3 and chimera_data.unique)
+	# A generated card remains deployable with its calculated stats.
+	if not game.hand.has(chimera):
+		game.draw_pile.erase(chimera)
+		game.discard_pile.erase(chimera)
+		game.hand.append(chimera)
+	game._select_card(game.hand.find(chimera))
+	game._slot_pressed(0, 0, true)
+	assert(game.lanes[0].rooms[0][0].max_hp == 50)
+	var chimera_unit: Dictionary = game.lanes[0].rooms[0][0]
+	assert(game._unique_in_play(chimera.name))
+	chimera_unit.hp = 30
+	game._regenerate_soldiers()
+	assert(chimera_unit.hp == 40)
+	game._fight({"lane":0, "units":[{"name":"적", "hp":12, "attack":0}]}, 0)
+	assert(chimera_unit.hp == 43)
 	game._new_game()
 	for round_index in range(1, 21):
 		assert(game.round_number == round_index)

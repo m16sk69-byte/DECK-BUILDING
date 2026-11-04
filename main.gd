@@ -14,11 +14,14 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
 }
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
-const TEST_EVENTS = ["시험 이벤트 1", "시험 이벤트 2", "시험 이벤트 3", "시험 이벤트 4"]
+const TEST_EVENTS = ["가능성 연구", "시험 이벤트 2", "시험 이벤트 3", "시험 이벤트 4"]
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
 const NOCTIS_PRICE := 30
+const RESEARCH_PRICE := 70
 const REST_HEAL_RATE := 0.30
 var rng := RandomNumberGenerator.new()
+var card_defs: Dictionary = CARDS.duplicate(true)
+var research_selected: Array = []
 var deck: Array = []
 var hand: Array = []
 var draw_pile: Array = []
@@ -242,6 +245,12 @@ func _new_game() -> void:
 	seen_events.clear()
 	pending_event = false
 	current_event = ""
+	for card_name in card_defs:
+		if not CARDS.has(card_name):
+			card_icons.erase(card_name)
+			sprite_icons.erase(card_name)
+	card_defs = CARDS.duplicate(true)
+	research_selected.clear()
 	deck.clear()
 	hand.clear()
 	draw_pile.clear()
@@ -278,7 +287,7 @@ func _regenerate_soldiers() -> void:
 	for lane in lanes:
 		for room in lane.rooms:
 			for soldier in room:
-				var amount: int = CARDS[soldier.name].get("regen", 0)
+				var amount: int = card_defs[soldier.name].get("regen", 0)
 				if amount > 0:
 					var restored: int = mini(amount, soldier.max_hp - soldier.hp)
 					soldier.hp += restored
@@ -319,20 +328,23 @@ func _set_mode(value: String) -> void:
 	_refresh()
 
 func _unique_in_play(name_value: String) -> bool:
-	if not CARDS[name_value].get("unique", false): return false
+	var data: Dictionary = card_defs[name_value]
+	var group: String = data.get("unique_group", name_value)
 	for lane in lanes:
 		for room in lane.rooms:
 			for soldier in room:
-				if soldier.name == name_value and soldier.hp > 0: return true
+				var other: Dictionary = card_defs[soldier.name]
+				if soldier.hp > 0 and other.get("unique_group", soldier.name) == group and (data.get("unique", false) or other.get("unique", false)): return true
 	for entry in reserves:
-		if entry.soldier.name == name_value and entry.soldier.hp > 0: return true
+		var other: Dictionary = card_defs[entry.soldier.name]
+		if entry.soldier.hp > 0 and other.get("unique_group", entry.soldier.name) == group and (data.get("unique", false) or other.get("unique", false)): return true
 	return false
 
 func _front_allowed(name_value: String, room: Array) -> bool:
-	return not CARDS[name_value].get("front_only", false) or room.is_empty() or not CARDS[room[0].name].get("front_only", false)
+	return not card_defs[name_value].get("front_only", false) or room.is_empty() or not card_defs[room[0].name].get("front_only", false)
 
 func _put_soldier(room: Array, soldier: Dictionary) -> void:
-	if CARDS[soldier.name].get("front_only", false): room.push_front(soldier)
+	if card_defs[soldier.name].get("front_only", false): room.push_front(soldier)
 	else: room.append(soldier)
 
 func _select_card(index: int) -> void:
@@ -362,7 +374,7 @@ func _soldier_pressed(lane: int, slot: int, index: int) -> void:
 		else:
 			var old_index: int = selected_order.index
 			if old_index != index:
-				if (old_index == 0 or index == 0) and CARDS[soldiers[0].name].get("front_only", false):
+				if (old_index == 0 or index == 0) and card_defs[soldiers[0].name].get("front_only", false):
 					_log("%s은(는) 선두에 고정됩니다." % soldiers[0].name)
 					selected_order.clear()
 					_refresh()
@@ -402,7 +414,7 @@ func _remove_trap(lane: int, slot: int, index: int) -> void:
 	if index < 0 or index >= traps.size(): return
 	var trap: Dictionary = traps.pop_at(index)
 	if trap.placed_round == round_number:
-		cost += CARDS[trap.name].cost
+		cost += card_defs[trap.name].cost
 		discard_pile.erase(trap.card)
 		hand.append(trap.card)
 		cards_used -= 1
@@ -461,7 +473,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			_log("이전 라운드의 병사는 병사 휴식으로 회수하세요.")
 			return
 		var target: Dictionary = placements.pop_at(target_index)
-		cost += CARDS[target.name].cost
+		cost += card_defs[target.name].cost
 		discard_pile.erase(target.card)
 		hand.append(target.card)
 		cards_used -= 1
@@ -487,7 +499,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			_log("먼저 손패의 카드를 선택하세요.")
 			return
 		var card: Dictionary = hand[selected_card]
-		var data: Dictionary = CARDS[card.name]
+		var data: Dictionary = card_defs[card.name]
 		if _unique_in_play(card.name):
 			_log("#고유: 같은 병사를 중복 배치할 수 없습니다.")
 			return
@@ -505,7 +517,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			return
 		if not is_room:
 			for existing in placements:
-				if CARDS[existing.name].slot == data.slot:
+				if card_defs[existing.name].slot == data.slot:
 					_log("같은 설치면에는 함정을 하나만 놓을 수 있습니다.")
 					return
 		var placed := {"name":card.name, "card":card, "placed_round":round_number}
@@ -591,7 +603,7 @@ func _refresh() -> void:
 	_clear(hand_box)
 	for i in range(hand.size()):
 		var card: Dictionary = hand[i]
-		var data: Dictionary = CARDS[card.name]
+		var data: Dictionary = card_defs[card.name]
 		var text_value: String = "%s%s\n비용 %d\n%s" % ["▶" if selected_card == i else "", card.name, data.cost, data.description]
 		if data.type == "trap": text_value += "\n" + data.slot
 		var card_button := _button(text_value, _select_card.bind(i))
@@ -631,9 +643,9 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		var targets := _live_enemies(party)
 		if targets.is_empty(): break
 		trap.hits += 1
-		if CARDS[trap.name].get("consumable", false):
+		if card_defs[trap.name].get("consumable", false):
 			trap.active = false
-		var damage: int = CARDS[trap.name].damage + trap_bonus
+		var damage: int = card_defs[trap.name].damage + trap_bonus
 		if trap.name == "낙석":
 			for unit in targets: _damage_enemy(unit, damage, trap.name)
 		elif trap.name == "화살":
@@ -654,12 +666,12 @@ func _fight(party: Dictionary, slot: int) -> void:
 		for i in range(maxi(allies.size(), enemies.size())):
 			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
 				var ally: Dictionary = allies[i]
-				var attack: int = CARDS[ally.name].attack + soldier_bonus
+				var attack: int = card_defs[ally.name].attack + soldier_bonus
 				if ally.name == "마법사":
 					for enemy in _live_enemies(party): _damage_enemy(enemy, attack, ally.name)
 				else:
 					_damage_enemy(_live_enemies(party).front(), attack, ally.name)
-				var lifesteal: int = CARDS[ally.name].get("lifesteal", 0)
+				var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
 				if lifesteal > 0:
 					var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
 					ally.hp += restored
@@ -806,6 +818,87 @@ func _random_event(eligible: Array):
 	if eligible.is_empty(): return null
 	return eligible[rng.randi_range(0, eligible.size() - 1)]
 
+func _research_candidates() -> Array:
+	return deck.filter(func(card): return card_defs[card.name].type == "soldier")
+
+func _start_research() -> void:
+	if phase != "이벤트" or current_event != "가능성 연구": return
+	if gold < RESEARCH_PRICE:
+		_log("골드가 부족합니다. 가능성 연구에는 70G가 필요합니다.")
+		return
+	if _research_candidates().size() < 2:
+		_log("덱에 병사 카드가 2장 이상 필요합니다.")
+		return
+	research_selected.clear()
+	_show_research_choices()
+
+func _show_research_choices() -> void:
+	_clear(options_box)
+	var panel := VBoxContainer.new()
+	options_box.add_child(panel)
+	panel.add_child(_label("덱에서 병사 카드 2장 선택 (%d/2)" % research_selected.size(), 16))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(450, 180)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	for card in _research_candidates():
+		var data: Dictionary = card_defs[card.name]
+		var selected := research_selected.has(card.id)
+		var label := "%s%s · 코스트 %d\n%s" % ["✓ " if selected else "", card.name, data.cost, data.description]
+		list.add_child(_button(label, _select_research_card.bind(card.id)))
+	if research_selected.size() == 2:
+		panel.add_child(_button("선택한 두 장 합성 (70G)", _finish_research))
+	panel.add_child(_button("취소", _cancel_research))
+
+func _select_research_card(card_id: int) -> void:
+	if phase != "이벤트" or current_event != "가능성 연구": return
+	if research_selected.has(card_id): research_selected.erase(card_id)
+	elif research_selected.size() < 2 and _research_candidates().any(func(card): return card.id == card_id): research_selected.append(card_id)
+	_show_research_choices()
+
+func _cancel_research() -> void:
+	research_selected.clear()
+	_clear(options_box)
+	options_box.add_child(_button("병사 카드 2장 합성 (70G)", _start_research))
+	options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
+
+func _finish_research() -> void:
+	if phase != "이벤트" or current_event != "가능성 연구" or gold < RESEARCH_PRICE or research_selected.size() != 2: return
+	var materials: Array = _research_candidates().filter(func(card): return research_selected.has(card.id))
+	if materials.size() != 2: return
+	var a: Dictionary = card_defs[materials[0].name]
+	var b: Dictionary = card_defs[materials[1].name]
+	var name_value := "키메라 #%d" % next_card_id
+	var result := {"type":"soldier", "cost":roundi((a.cost + b.cost) / 2.0), "hp":a.hp + b.hp, "attack":a.attack + b.attack, "unique_group":"키메라"}
+	for keyword in ["regen", "lifesteal"]:
+		var amount: int = a.get(keyword, 0) + b.get(keyword, 0)
+		if amount > 0: result[keyword] = amount
+	for keyword in ["unique", "front_only"]:
+		if a.get(keyword, false) or b.get(keyword, false): result[keyword] = true
+	var description := "HP %d · 공격 %d" % [result.hp, result.attack]
+	if result.get("regen", 0) > 0: description += "\n#재생%d" % result.regen
+	if result.get("lifesteal", 0) > 0: description += " #흡혈%d" % result.lifesteal
+	if result.get("unique", false): description += " #고유"
+	if result.get("front_only", false): description += " 선두 고정"
+	result["description"] = description
+	card_defs[name_value] = result
+	card_icons[name_value] = card_icons["고블린"]
+	sprite_icons[name_value] = sprite_icons["고블린"]
+	for card in materials:
+		deck.erase(card)
+		hand.erase(card)
+		draw_pile.erase(card)
+		discard_pile.erase(card)
+	gold -= RESEARCH_PRICE
+	_add_card(name_value)
+	research_selected.clear()
+	_log("가능성 연구: %s + %s → %s · 70G" % [materials[0].name, materials[1].name, name_value])
+	_clear(options_box)
+	_next_round()
+
 func _show_event() -> void:
 	var eligible := _eligible_events()
 	pending_event = false
@@ -824,7 +917,7 @@ func _show_event() -> void:
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	else:
 		match current_event:
-			"시험 이벤트 1": options_box.add_child(_button("골드 5 획득 (시험)", _choose_event.bind("gold")))
+			"가능성 연구": options_box.add_child(_button("병사 카드 2장 합성 (70G)", _start_research))
 			"시험 이벤트 2": options_box.add_child(_button("병사 전원 8 회복 (시험)", _choose_event.bind("heal")))
 			"시험 이벤트 3": options_box.add_child(_button("오크 카드 영입 (4G · 시험)", _choose_event.bind("card")))
 			"시험 이벤트 4": options_box.add_child(_button("화살 함정 카드 획득 (시험)", _choose_event.bind("arrow")))
@@ -836,7 +929,7 @@ func _choose_event(choice: String) -> void:
 	if phase != "이벤트": return
 	if current_event == "흡혈귀와의 만남" and choice not in ["noctis", "leave"]: return
 	if current_event != VAMPIRE_EVENT:
-		var allowed := {"시험 이벤트 1":"gold", "시험 이벤트 2":"heal", "시험 이벤트 3":"card", "시험 이벤트 4":"arrow"}
+		var allowed := {"시험 이벤트 2":"heal", "시험 이벤트 3":"card", "시험 이벤트 4":"arrow"}
 		if choice != "leave" and choice != allowed.get(current_event, ""): return
 	if choice == "card" and gold < 4:
 		_log("골드가 부족합니다. 다른 선택지를 고르세요.")
