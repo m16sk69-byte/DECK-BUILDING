@@ -5,12 +5,11 @@ const CARDS = {
 	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":4, "consumable":false, "description":"선두 1명 4 피해"},
 	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":8, "consumable":true, "description":"#소모성\n후방 2명 각 8 피해"},
 	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
-	"고블린": {"type":"soldier", "cost":1, "hp":20, "attack":5, "description":"HP 20 · 선두 5 피해"},
-	"고블린 궁수": {"type":"soldier", "cost":1, "hp":10, "attack":8, "description":"HP 10 · 선두 8 피해"},
+	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
+	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
 	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "description":"HP 30 · 공격 5\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
-	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 }
 const ENEMY_TYPES = {
@@ -100,7 +99,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["궁수", "마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "보스"]:

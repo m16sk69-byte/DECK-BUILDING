@@ -11,9 +11,9 @@ func check() -> void:
 	assert(game.hand.size() == 5)
 	assert(game.deck.size() == 10)
 	assert(game.gold == 30)
-	assert(game.card_icons.size() == 10 and game.music_player.stream != null)
-	assert(game.CARDS["고블린"].hp == 20 and game.CARDS["고블린"].attack == 5 and game.CARDS["고블린"].cost == 1)
-	assert(game.CARDS["고블린 궁수"].hp == 10 and game.CARDS["고블린 궁수"].attack == 8 and game.CARDS["고블린 궁수"].cost == 1)
+	assert(game.card_icons.size() == 9 and game.music_player.stream != null)
+	assert(game.CARDS["고블린"].hp == 14 and game.CARDS["고블린"].attack == 3 and game.CARDS["고블린"].cost == 1)
+	assert(game.CARDS["고블린 궁수"].hp == 8 and game.CARDS["고블린 궁수"].attack == 6 and game.CARDS["고블린 궁수"].cost == 1)
 	assert(game.CARDS["오크"].hp == 30 and game.CARDS["오크"].attack == 5 and game.CARDS["오크"].cost == 2 and game.CARDS["오크"].front_only)
 	game._toggle_music()
 	assert(not game.music_enabled)
@@ -178,7 +178,7 @@ func check() -> void:
 	game._new_game()
 	game.lanes[0].rooms[0].append_array([{"name":"고블린", "hp":20, "max_hp":20}, {"name":"고블린", "hp":20, "max_hp":20}])
 	game.log_lines.clear()
-	game._fight({"lane":0, "units":[{"name":"적", "hp":10, "attack":99}]}, 0)
+	game._fight({"lane":0, "units":[{"name":"적", "hp":6, "attack":99}]}, 0)
 	assert(game.lanes[0].rooms[0].size() == 2)
 	assert(not game.log_lines.any(func(line): return line.begins_with("적 →")))
 	# The swordsman gains +5 before attacks 2, 4 and 6, retaining the bonus.
@@ -247,7 +247,7 @@ func check() -> void:
 	assert(game.reserves.is_empty() and survivor.hp == 13)
 	game._set_mode("rest")
 	game._soldier_pressed(1, 0, 0)
-	var nearly_full = {"name":"궁수", "hp":15, "max_hp":16, "placed_round":1}
+	var nearly_full = {"name":"마법사", "hp":13, "max_hp":14, "placed_round":1}
 	game.reserves.append({"soldier":nearly_full, "ready_round":3, "healed":false})
 	game.speed = 0.001
 	game.parties = [{"lane":0, "units":[{"name":"적", "hp":1, "attack":1}], "pos":-1, "done":false}]
@@ -255,7 +255,7 @@ func check() -> void:
 	game._start_wave()
 	while game.phase == "웨이브": await create_timer(0.01).timeout
 	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
-	assert(game.reserves[1].healed and nearly_full.hp == 16)
+	assert(game.reserves[1].healed and nearly_full.hp == 14)
 	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
 	game._choose_event("leave")
 	assert(game.round_number == 3)
@@ -298,7 +298,7 @@ func check() -> void:
 	game.parties = [{"lane":0, "units":[{"name":"적", "hp":10, "max_hp":10, "attack":1}], "pos":-1, "done":false}]
 	game._start_wave()
 	while game.phase == "웨이브": await create_timer(0.01).timeout
-	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 23)
+	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 21)
 	# Starting a new game during the animated fight must cancel the old wave.
 	game._new_game()
 	game.speed = 0.02
@@ -458,6 +458,7 @@ func check() -> void:
 	var size_before_transform: int = game.deck.size()
 	game.card_defs["시험 키메라"] = game.card_defs["고블린"].duplicate(true)
 	assert(game._card_transform_candidates(old_name).has("시험 키메라"))
+	assert(not game.CARDS.has("궁수") and not game._card_transform_candidates(old_name).has("궁수"))
 	game.card_defs.erase("시험 키메라")
 	game._start_card_event()
 	game._select_event_card(old_id)
@@ -470,28 +471,28 @@ func check() -> void:
 	assert(not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	game.round_number = 10
 	assert(game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
-	var field_soldier := {"name":"고블린", "hp":13, "max_hp":20}
-	var resting_soldier := {"name":"고블린 궁수", "hp":3, "max_hp":10}
+	var field_soldier := {"name":"고블린", "hp":13, "max_hp":14}
+	var resting_soldier := {"name":"고블린 궁수", "hp":3, "max_hp":8}
 	game.lanes[0].rooms[0].append(field_soldier)
 	game.reserves.append({"soldier":resting_soldier, "ready_round":11, "healed":false})
 	game._gain_madness_relic()
-	assert(field_soldier.hp == 10 and field_soldier.max_hp == 10)
-	assert(resting_soldier.hp == 3 and resting_soldier.max_hp == 5)
-	assert(game._soldier_stats("고블린").hp == 10 and game._soldier_stats("고블린").attack == 15)
+	assert(field_soldier.hp == 7 and field_soldier.max_hp == 7)
+	assert(resting_soldier.hp == 3 and resting_soldier.max_hp == 4)
+	assert(game._soldier_stats("고블린").hp == 7 and game._soldier_stats("고블린").attack == 10)
 	game._gain_madness_relic()
-	assert(field_soldier.max_hp == 10)
+	assert(field_soldier.max_hp == 7)
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":16, "attack":0}]}, 0)
-	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 15 피해")))
+	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 10 피해")))
 	game._add_card("고블린")
 	var new_soldier_card: Dictionary = game.deck[-1]
 	game.discard_pile.erase(new_soldier_card)
 	game.hand.append(new_soldier_card)
 	game._select_card(game.hand.find(new_soldier_card))
 	game._slot_pressed(1, 0, true)
-	assert(game.lanes[1].rooms[0][0].max_hp == 10)
+	assert(game.lanes[1].rooms[0][0].max_hp == 7)
 	game.card_defs["고블린"].hp = 15
-	assert(game._soldier_stats("고블린").hp == 8 and game._soldier_stats("고블린").attack == 12)
+	assert(game._soldier_stats("고블린").hp == 8 and game._soldier_stats("고블린").attack == 10)
 	# The boss relic changes maximum cost and the next round's draw.
 	game._new_game()
 	game._discard_hand()
@@ -558,6 +559,7 @@ func check() -> void:
 	# Poison hits before actions; bleed adds damage without recursively triggering itself.
 	game._new_game()
 	game.card_defs["상태이상 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["상태이상 병사"]["attack"] = 5
 	game.card_defs["상태이상 병사"]["poison"] = 5
 	game.card_defs["상태이상 병사"]["bleed"] = 3
 	var status_ally := {"name":"상태이상 병사", "hp":20, "max_hp":20}
@@ -576,6 +578,7 @@ func check() -> void:
 	assert(stacking_enemy.hp == 71 and stacking_enemy.poison == 10 and stacking_enemy.bleed == 6)
 	game._new_game()
 	game.card_defs["독 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["독 병사"]["attack"] = 5
 	game.card_defs["독 병사"]["poison"] = 5
 	var poison_ally := {"name":"독 병사", "hp":20, "max_hp":20}
 	var poison_enemy := {"name":"적", "hp":10, "attack":99}
