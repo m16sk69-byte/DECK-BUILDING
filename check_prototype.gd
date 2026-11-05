@@ -14,6 +14,7 @@ func check() -> void:
 	assert(game.card_icons.size() == 10 and game.music_player.stream != null)
 	assert(game.CARDS["고블린"].hp == 20 and game.CARDS["고블린"].attack == 5 and game.CARDS["고블린"].cost == 1)
 	assert(game.CARDS["고블린 궁수"].hp == 10 and game.CARDS["고블린 궁수"].attack == 8 and game.CARDS["고블린 궁수"].cost == 1)
+	assert(game.CARDS["오크"].hp == 30 and game.CARDS["오크"].attack == 5 and game.CARDS["오크"].cost == 2 and game.CARDS["오크"].front_only)
 	game._toggle_music()
 	assert(not game.music_enabled)
 	game._toggle_music()
@@ -150,8 +151,9 @@ func check() -> void:
 	assert(boss_units[2].hp == 50 and boss_units[2].attack == 10)
 	# Rear and highest-attack targeting respect blur and deterministic front-order ties.
 	var front := {"name":"고블린", "hp":20}
-	var strong := {"name":"오크", "hp":25}
+	var strong := {"name":"오크", "hp":30}
 	var rear := {"name":"고블린 궁수", "hp":10}
+	game.card_defs["오크"].attack = 10
 	assert(game._single_target_soldier([front, strong, rear], "rear") == rear)
 	assert(game._single_target_soldier([front, strong, rear], "highest_attack") == strong)
 	game.card_defs["오크"]["blur"] = true
@@ -167,10 +169,11 @@ func check() -> void:
 	assert(front.hp == 20 and rear.hp == 2)
 	game._new_game()
 	front = {"name":"고블린", "hp":20, "max_hp":20}
-	strong = {"name":"오크", "hp":25, "max_hp":25}
+	strong = {"name":"오크", "hp":30, "max_hp":30}
+	game.card_defs["고블린"].attack = 4
 	game.lanes[0].rooms[0].append_array([front, strong])
-	game._fight({"lane":0, "units":[{"name":"저격수", "hp":16, "attack":15, "targeting":"highest_attack"}]}, 0)
-	assert(front.hp == 20 and strong.hp == 10)
+	game._fight({"lane":0, "units":[{"name":"저격수", "hp":10, "attack":15, "targeting":"highest_attack"}]}, 0)
+	assert(front.hp == 20 and strong.hp == 15)
 	# An enemy defeated by the allied phase does not act.
 	game._new_game()
 	game.lanes[0].rooms[0].append_array([{"name":"고블린", "hp":20, "max_hp":20}, {"name":"고블린", "hp":20, "max_hp":20}])

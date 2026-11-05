@@ -8,7 +8,7 @@ const CARDS = {
 	"고블린": {"type":"soldier", "cost":1, "hp":20, "attack":5, "description":"HP 20 · 선두 5 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":10, "attack":8, "description":"HP 10 · 선두 8 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
-	"오크": {"type":"soldier", "cost":2, "hp":25, "attack":10, "front_only":true, "description":"HP 25 · 공격 10\n선두 고정"},
+	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "description":"HP 30 · 공격 5\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
