@@ -13,6 +13,13 @@ const CARDS = {
 	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 }
+const ENEMY_TYPES = {
+	"도적": {"hp":10, "attack":8, "targeting":"rear", "description":"후열 병사 공격"},
+	"방패병": {"hp":20, "attack":2, "targeting":"front", "description":"선두 병사 공격"},
+	"저격수": {"hp":5, "attack":15, "targeting":"highest_attack", "description":"공격력이 가장 높은 병사 공격"},
+}
+const TEST_KNIGHT_HP := 24
+const TEST_KNIGHT_ATTACK := 6
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
@@ -96,7 +103,7 @@ func _load_art() -> void:
 	for kind in ["궁수", "마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
-	for kind in ["방패병", "검투사", "궁수", "마법사", "보스"]:
+	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "보스"]:
 		sprite_icons["enemy_" + kind] = pixel_art.make_sprite(kind, true)
 
 func _start_music() -> void:
@@ -348,14 +355,21 @@ func _generate_parties() -> void:
 	var count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
 	for p in range(count):
 		var units := []
-		var enemy_count := mini(4, 2 + int(round_number / 6))
-		for i in range(enemy_count):
-			var role: String = ["방패병", "검투사", "마법사", "궁수"][rng.randi_range(0, 3)]
-			var hp: int = 10 + int(round_number / 3) * 2 + (5 if role == "방패병" else 0)
-			var atk: int = 3 + int(round_number / 7) + (1 if role == "검투사" else 0)
-			units.append({"name":role, "hp":hp, "max_hp":hp, "attack":atk})
-		if round_number % 5 == 0 and p == 0:
-			units[0] = {"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5)}
+		if round_number == 5 and p == 0:
+			for i in range(2):
+				units.append({"name":"기사", "hp":TEST_KNIGHT_HP, "max_hp":TEST_KNIGHT_HP, "attack":TEST_KNIGHT_ATTACK, "targeting":"front", "description":"선두 병사 공격 · 수치 시험용"})
+			units.append({"name":"동국의 검사", "hp":50, "max_hp":50, "attack":10, "targeting":"front", "description":"두 번째 공격마다 공격력 +5 후 공격", "attack_count":0, "attack_boost_interval":2, "attack_boost":5})
+		else:
+			var enemy_count := mini(4, 2 + int(round_number / 6))
+			var roles := ENEMY_TYPES.keys()
+			for i in range(enemy_count):
+				var role: String = roles[rng.randi_range(0, roles.size() - 1)]
+				var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
+				enemy["name"] = role
+				enemy["max_hp"] = enemy.hp
+				units.append(enemy)
+			if round_number % 5 == 0 and p == 0:
+				units[0] = {"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "description":"임시 보스"}
 		parties.append({"lane":rng.randi_range(0, 1), "units":units, "pos":-1, "done":false})
 	selected_party = 0
 
@@ -600,7 +614,8 @@ func _refresh() -> void:
 		var party: Dictionary = parties[i]
 		var descriptions: Array[String] = []
 		for unit in party.units:
-			descriptions.append("%s HP%d 공격%d" % [unit.name, unit.hp, unit.attack])
+			var detail: String = " · " + unit.description if unit.has("description") else ""
+			descriptions.append("%s HP%d 공격%d%s" % [unit.name, unit.hp, unit.attack, detail])
 		var location := "처치" if party.done else ("입구 대기" if party.pos < 0 else ("통로 %d" % (int(party.pos / 2) + 1) if party.pos % 2 == 0 else "방 %d" % (int(party.pos / 2) + 1)))
 		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, "위" if party.lane == 0 else "아래", location, " / ".join(descriptions)]
 		party_box.add_child(_button(label_value, _select_party.bind(i)))
@@ -702,10 +717,18 @@ func _soldier_hit_enemy(unit: Dictionary, amount: int, ally: Dictionary) -> void
 func _live_enemies(party: Dictionary) -> Array:
 	return party.units.filter(func(unit): return unit.hp > 0)
 
-func _single_target_soldier(soldiers: Array) -> Dictionary:
+func _single_target_soldier(soldiers: Array, targeting := "front") -> Dictionary:
+	var candidates: Array = []
 	for soldier in soldiers:
-		if not card_defs[soldier.name].get("blur", false): return soldier
-	return soldiers.front()
+		if not card_defs[soldier.name].get("blur", false): candidates.append(soldier)
+	if candidates.is_empty(): candidates = soldiers
+	if targeting == "rear": return candidates.back()
+	if targeting == "highest_attack":
+		var selected: Dictionary = candidates.front()
+		for soldier in candidates:
+			if _soldier_stats(soldier.name).attack > _soldier_stats(selected.name).attack: selected = soldier
+		return selected
+	return candidates.front()
 
 func _apply_traps(party: Dictionary, slot: int) -> void:
 	for trap in lanes[party.lane].traps[slot]:
@@ -729,13 +752,11 @@ func _fight(party: Dictionary, slot: int) -> void:
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
 	var fight_token := wave_token
 	_log("%s 경로 방 %d 전투 시작" % ["위" if party.lane == 0 else "아래", slot + 1])
-	# Each cycle snapshots actors. A dead actor loses its turn; surviving actors act once.
+	# Each cycle: all surviving allies act in order, then surviving enemies act in order.
 	while not soldiers.is_empty() and not _live_enemies(party).is_empty():
 		var allies := soldiers.duplicate()
-		var enemies := _live_enemies(party).duplicate()
-		for i in range(maxi(allies.size(), enemies.size())):
-			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
-				var ally: Dictionary = allies[i]
+		for ally in allies:
+			if ally.hp > 0 and not _live_enemies(party).is_empty():
 				var attack: int = _soldier_stats(ally.name).attack + soldier_bonus
 				if card_defs[ally.name].get("area_attack", false):
 					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
@@ -750,12 +771,20 @@ func _fight(party: Dictionary, slot: int) -> void:
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token: return
-			if i < enemies.size() and enemies[i].hp > 0 and not soldiers.is_empty():
-				var enemy: Dictionary = enemies[i]
+			if _live_enemies(party).is_empty(): break
+		var enemies := _live_enemies(party).duplicate()
+		for enemy in enemies:
+			if enemy.hp > 0 and not soldiers.is_empty():
 				if enemy.get("poison", 0) > 0:
 					_damage_enemy(enemy, enemy.poison, "#중독")
 					if enemy.hp <= 0: continue
-				var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers)]
+				var interval: int = enemy.get("attack_boost_interval", 0)
+				if interval > 0:
+					enemy["attack_count"] = enemy.get("attack_count", 0) + 1
+					if enemy.attack_count % interval == 0:
+						enemy.attack += enemy.get("attack_boost", 0)
+						_log("%s 공격력 +%d (공격력 %d)" % [enemy.name, enemy.attack_boost, enemy.attack])
+				var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers, enemy.get("targeting", "front"))]
 				for target in targets:
 					target.hp = maxi(0, target.hp - enemy.attack)
 					battle_notice = "%s → %s · %d 피해" % [enemy.name, target.name, enemy.attack]

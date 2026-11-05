@@ -87,7 +87,7 @@ func check() -> void:
 	assert(game.cost == 5 and tank.hp == 24 and backline.hp == 14)
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":20, "attack":1}]}, 0)
-	assert(game.log_lines[2].begins_with("적 → 고블린"))
+	assert(game.log_lines.any(func(line): return line.begins_with("적 → 고블린")))
 	game._new_game()
 	if not game.hand.any(func(card): return card.name == "고블린"):
 		for i in range(game.draw_pile.size()):
@@ -118,11 +118,11 @@ func check() -> void:
 	game._fight({"lane":0, "units":enemy_units}, 0)
 	var log: Array = game.log_lines
 	assert(log[1].begins_with("고블린 →"))
-	assert(log[2].begins_with("적1 →"))
+	assert(log[2].begins_with("고블린 →"))
 	assert(log[3].begins_with("고블린 →"))
-	assert(log[4].begins_with("적2 →"))
-	assert(log[5].begins_with("고블린 →"))
-	assert(log[6].begins_with("고블린 →"))
+	assert(log[4].begins_with("고블린 →"))
+	assert(log[5].begins_with("적1 →"))
+	assert(log[6].begins_with("적2 →"))
 	game._new_game()
 	enemy_units = []
 	for i in range(4): enemy_units.append({"name":"적%d" % (i + 1), "hp":100, "attack":1})
@@ -132,11 +132,61 @@ func check() -> void:
 	game._fight({"lane":0, "units":enemy_units}, 0)
 	log = game.log_lines
 	assert(log[1].begins_with("고블린 →"))
-	assert(log[2].begins_with("적1 →"))
-	assert(log[3].begins_with("고블린 →"))
+	assert(log[2].begins_with("고블린 →"))
+	assert(log[3].begins_with("적1 →"))
 	assert(log[4].begins_with("적2 →"))
 	assert(log[5].begins_with("적3 →"))
 	assert(log[6].begins_with("적4 →"))
+	# Regular enemy stats and the proposed 5th-round boss formation.
+	game._new_game()
+	assert(game.ENEMY_TYPES["도적"].hp == 10 and game.ENEMY_TYPES["도적"].attack == 8)
+	assert(game.ENEMY_TYPES["방패병"].hp == 20 and game.ENEMY_TYPES["방패병"].attack == 2)
+	assert(game.ENEMY_TYPES["저격수"].hp == 5 and game.ENEMY_TYPES["저격수"].attack == 15)
+	game.round_number = 5
+	game._generate_parties()
+	var boss_units: Array = game.parties[0].units
+	assert(boss_units.map(func(unit): return unit.name) == ["기사", "기사", "동국의 검사"])
+	assert(boss_units[0].hp == 24 and boss_units[0].attack == 6)
+	assert(boss_units[2].hp == 50 and boss_units[2].attack == 10)
+	# Rear and highest-attack targeting respect blur and deterministic front-order ties.
+	var front := {"name":"고블린", "hp":20}
+	var strong := {"name":"오크", "hp":25}
+	var rear := {"name":"고블린 궁수", "hp":10}
+	assert(game._single_target_soldier([front, strong, rear], "rear") == rear)
+	assert(game._single_target_soldier([front, strong, rear], "highest_attack") == strong)
+	game.card_defs["오크"]["blur"] = true
+	assert(game._single_target_soldier([front, strong, rear], "highest_attack") == rear)
+	game.card_defs["고블린 궁수"]["blur"] = true
+	assert(game._single_target_soldier([front, strong, rear], "rear") == front)
+	# Exercise the target selection through combat, including the enemy's actual damage.
+	game._new_game()
+	front = {"name":"고블린", "hp":20, "max_hp":20}
+	rear = {"name":"고블린 궁수", "hp":10, "max_hp":10}
+	game.lanes[0].rooms[0].append_array([front, rear])
+	game._fight({"lane":0, "units":[{"name":"도적", "hp":14, "attack":8, "targeting":"rear"}]}, 0)
+	assert(front.hp == 20 and rear.hp == 2)
+	game._new_game()
+	front = {"name":"고블린", "hp":20, "max_hp":20}
+	strong = {"name":"오크", "hp":25, "max_hp":25}
+	game.lanes[0].rooms[0].append_array([front, strong])
+	game._fight({"lane":0, "units":[{"name":"저격수", "hp":16, "attack":15, "targeting":"highest_attack"}]}, 0)
+	assert(front.hp == 20 and strong.hp == 10)
+	# An enemy defeated by the allied phase does not act.
+	game._new_game()
+	game.lanes[0].rooms[0].append_array([{"name":"고블린", "hp":20, "max_hp":20}, {"name":"고블린", "hp":20, "max_hp":20}])
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":[{"name":"적", "hp":10, "attack":99}]}, 0)
+	assert(game.lanes[0].rooms[0].size() == 2)
+	assert(not game.log_lines.any(func(line): return line.begins_with("적 →")))
+	# The swordsman gains +5 before attacks 2, 4 and 6, retaining the bonus.
+	game._new_game()
+	game.card_defs["시험 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["시험 병사"]["attack"] = 3
+	var durable := {"name":"시험 병사", "hp":1000, "max_hp":1000}
+	var swordsman := {"name":"동국의 검사", "hp":20, "attack":10, "attack_count":0, "attack_boost_interval":2, "attack_boost":5}
+	game.lanes[0].rooms[0].append(durable)
+	game._fight({"lane":0, "units":[swordsman]}, 0)
+	assert(swordsman.attack_count == 6 and swordsman.attack == 25 and durable.hp == 895)
 	game._new_game()
 	var trap = {"name":"가시", "card":{"name":"가시", "id":999}, "placed_round":1, "active":false, "hits":3}
 	game.lanes[0].traps[0].append(trap)
@@ -500,7 +550,7 @@ func check() -> void:
 	assert(game._single_target_soldier([hidden, visible]) == visible)
 	assert(game._single_target_soldier([hidden]) == hidden)
 	game.lanes[0].rooms[0].append_array([hidden, visible])
-	game._fight({"lane":0, "units":[{"name":"광역 적", "hp":6, "attack":3, "area_attack":true}]}, 0)
+	game._fight({"lane":0, "units":[{"name":"광역 적", "hp":11, "attack":3, "area_attack":true}]}, 0)
 	assert(hidden.hp == 7 and visible.hp == 7)
 	# Poison hits before actions; bleed adds damage without recursively triggering itself.
 	game._new_game()
