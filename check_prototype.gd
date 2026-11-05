@@ -347,8 +347,10 @@ func check() -> void:
 	assert(noctis.hp == 15)
 	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
+	game.round_number = 9
+	assert(game._eligible_events().size() == 5 and not game._eligible_events().has(game.MADNESS_EVENT))
 	game.round_number = 10
-	assert(game._eligible_events().size() == 5 and game._eligible_events().has(game.VAMPIRE_EVENT))
+	assert(game._eligible_events().size() == 6 and game._eligible_events().has(game.VAMPIRE_EVENT) and game._eligible_events().has(game.MADNESS_EVENT))
 	# Check selection with the current and larger candidate pools.
 	game.rng.seed = 143
 	for pool_size in [5, 19, 20]:
@@ -361,7 +363,7 @@ func check() -> void:
 		for count in sample_counts: assert(absf(float(count) - 20000.0 / pool_size) < 20000.0 / pool_size * 0.2)
 	assert(game._random_event([]) == null)
 	game._show_event()
-	assert(not game._eligible_events().has(game.current_event) and game._eligible_events().size() == 4)
+	assert(not game._eligible_events().has(game.current_event) and game._eligible_events().size() == 5)
 	game.round_number = 12
 	assert(not game._eligible_events().has(game.VAMPIRE_EVENT))
 	game._new_game()
@@ -375,18 +377,72 @@ func check() -> void:
 	game._choose_event("noctis")
 	assert(game.gold == 0 and game.deck.size() == deck_before_purchase + 1)
 	assert(game.deck.any(func(card): return card.name == "녹티스"))
-	# The remaining two temporary events apply their own effects.
+	# Removing and transforming operate on one selected card and can be cancelled.
 	game._new_game()
-	game.gold = 10
-	var wounded = {"name":"고블린", "hp":10, "max_hp":20, "placed_round":0}
-	game.lanes[0].rooms[0].append(wounded)
-	for event in [["시험 이벤트 3", "card"], ["시험 이벤트 4", "arrow"]]:
-		game.phase = "이벤트"
-		game.current_event = event[0]
-		game._choose_event(event[1])
-	assert(game.gold == 6 and wounded.hp == 10)
-	assert(game.deck.any(func(card): return card.name == "오크"))
-	assert(game.deck.filter(func(card): return card.name == "화살").size() == 2)
+	game.phase = "이벤트"
+	game.current_event = "넌 필요없어!!"
+	var selected_for_removal: Dictionary = game.hand[0]
+	var size_before_remove: int = game.deck.size()
+	game._start_card_event()
+	game._select_event_card(selected_for_removal.id)
+	game._cancel_card_event()
+	assert(game.deck.size() == size_before_remove and game.hand.has(selected_for_removal))
+	game._start_card_event()
+	game._select_event_card(selected_for_removal.id)
+	game._finish_card_event()
+	assert(game.deck.size() == size_before_remove - 1 and not game.deck.has(selected_for_removal))
+	assert(not game.hand.has(selected_for_removal) and not game.draw_pile.has(selected_for_removal) and not game.discard_pile.has(selected_for_removal))
+	game._new_game()
+	game.phase = "이벤트"
+	game.current_event = "그냥 처음에 보여준거로 해주세요"
+	var selected_for_transform: Dictionary = game.deck[0]
+	var old_name: String = selected_for_transform.name
+	var old_id: int = selected_for_transform.id
+	var size_before_transform: int = game.deck.size()
+	game.card_defs["시험 키메라"] = game.card_defs["고블린"].duplicate(true)
+	assert(game._card_transform_candidates(old_name).has("시험 키메라"))
+	game.card_defs.erase("시험 키메라")
+	game._start_card_event()
+	game._select_event_card(old_id)
+	game._finish_card_event()
+	assert(game.deck.size() == size_before_transform and selected_for_transform.id == old_id)
+	assert(selected_for_transform.name != old_name and game.CARDS.has(selected_for_transform.name))
+	# Madness affects living units and future cards; damaged units never heal when it is gained.
+	game._new_game()
+	game.round_number = 9
+	assert(not game._eligible_events().has(game.MADNESS_EVENT))
+	game.round_number = 10
+	assert(game._eligible_events().has(game.MADNESS_EVENT))
+	var field_soldier := {"name":"고블린", "hp":13, "max_hp":20}
+	var resting_soldier := {"name":"고블린 궁수", "hp":3, "max_hp":10}
+	game.lanes[0].rooms[0].append(field_soldier)
+	game.reserves.append({"soldier":resting_soldier, "ready_round":11, "healed":false})
+	game._gain_madness_relic()
+	assert(field_soldier.hp == 10 and field_soldier.max_hp == 10)
+	assert(resting_soldier.hp == 3 and resting_soldier.max_hp == 5)
+	assert(game._soldier_stats("고블린").hp == 10 and game._soldier_stats("고블린").attack == 15)
+	game._gain_madness_relic()
+	assert(field_soldier.max_hp == 10)
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":[{"name":"적", "hp":16, "attack":0}]}, 0)
+	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 15 피해")))
+	game._add_card("고블린")
+	var new_soldier_card: Dictionary = game.deck[-1]
+	game.discard_pile.erase(new_soldier_card)
+	game.hand.append(new_soldier_card)
+	game._select_card(game.hand.find(new_soldier_card))
+	game._slot_pressed(1, 0, true)
+	assert(game.lanes[1].rooms[0][0].max_hp == 10)
+	game.card_defs["고블린"].hp = 15
+	assert(game._soldier_stats("고블린").hp == 8 and game._soldier_stats("고블린").attack == 12)
+	# The boss relic changes maximum cost and the next round's draw.
+	game._new_game()
+	game._discard_hand()
+	game.phase = "보스 보상"
+	game.pending_event = false
+	game._choose_reward(game.COST_DRAW_RELIC)
+	assert(game.max_cost == 6 and game.cost == 6 and game.hand.size() == 4)
+	assert(game.rewards_used.has(game.COST_DRAW_RELIC) and game.draw_penalty == 1)
 	# Ritual upgrades exactly one random deck card without adding #unique.
 	game._new_game()
 	game._add_card("녹티스")
@@ -539,7 +595,7 @@ func check() -> void:
 			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
 			if round_index == 10: assert(game.phase == "이벤트")
 		if game.phase == "이벤트": game._choose_event("leave")
-	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index == 5)
+	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index >= 5 and game.event_index <= 6)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
 	print("CHECK PASSED: deck and discard cycling, trap rearming, regeneration, lifesteal, unique units, front locking, rest and 20-round flow")
 	quit()
