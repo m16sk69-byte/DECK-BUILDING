@@ -453,6 +453,14 @@ func check() -> void:
 	game._fight({"lane":0, "units":[status_enemy]}, 0)
 	assert(status_enemy.hp == 0 and status_ally.hp == 19)
 	assert(status_enemy.poison == 5 and status_enemy.bleed == 3)
+	# Repeated applications add both effects; bleeding reacts once to each hit.
+	var stacking_enemy := {"name":"적", "hp":100, "attack":1}
+	game._soldier_hit_enemy(stacking_enemy, 5, status_ally)
+	assert(stacking_enemy.hp == 95 and stacking_enemy.poison == 5 and stacking_enemy.bleed == 3)
+	game._soldier_hit_enemy(stacking_enemy, 5, status_ally)
+	assert(stacking_enemy.hp == 87 and stacking_enemy.poison == 10 and stacking_enemy.bleed == 6)
+	game._damage_enemy(stacking_enemy, stacking_enemy.poison, "#중독")
+	assert(stacking_enemy.hp == 71 and stacking_enemy.poison == 10 and stacking_enemy.bleed == 6)
 	game._new_game()
 	game.card_defs["독 병사"] = game.card_defs["고블린"].duplicate(true)
 	game.card_defs["독 병사"]["poison"] = 5

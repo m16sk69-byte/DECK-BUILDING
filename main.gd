@@ -651,7 +651,7 @@ func _soldier_hit_enemy(unit: Dictionary, amount: int, ally: Dictionary) -> void
 	for keyword in ["poison", "bleed"]:
 		var strength: int = data.get(keyword, 0)
 		if strength > 0:
-			unit[keyword] = maxi(unit.get(keyword, 0), strength)
+			unit[keyword] = unit.get(keyword, 0) + strength
 			_log("%s에게 #%s%d 적용" % [unit.name, KEYWORD_NAMES[keyword], unit[keyword]])
 
 func _live_enemies(party: Dictionary) -> Array:
