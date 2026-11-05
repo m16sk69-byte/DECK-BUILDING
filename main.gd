@@ -585,14 +585,18 @@ func _log(value: String) -> void:
 
 func _refresh() -> void:
 	if not summary: return
-	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [round_number, phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
+	var displayed_round := round_number + 1 if phase == "이벤트" else round_number
+	var displayed_phase := "대기 · 이벤트" if phase == "이벤트" else phase
+	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [displayed_round, displayed_phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
 	if madness_relic: summary.text += "   |   유물: 광기의 집념"
 	if draw_penalty > 0: summary.text += "   |   턴 드로우 %d장" % maxi(0, 5 - draw_penalty)
 	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"지도 아래 함정 선택해 철거 · 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭"}
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	start_button.disabled = phase != "준비"
 	_clear(party_box)
-	for i in range(parties.size()):
+	if phase == "이벤트":
+		party_box.add_child(_label("다음 라운드의 적 정보는 이벤트 처리 후 표시됩니다.", 16))
+	for i in range(0 if phase == "이벤트" else parties.size()):
 		var party: Dictionary = parties[i]
 		var descriptions: Array[String] = []
 		for unit in party.units:
@@ -879,13 +883,13 @@ func _heal_all(amount: int) -> void:
 		var soldier: Dictionary = entry.soldier
 		soldier.hp = mini(soldier.max_hp, soldier.hp + amount)
 
-func _eligible_events() -> Array:
+func _eligible_events(event_round: int) -> Array:
 	var eligible: Array = []
 	for event_name in TEST_EVENTS:
 		if not seen_events.has(event_name): eligible.append(event_name)
-	if round_number <= 10 and not seen_events.has(VAMPIRE_EVENT):
+	if event_round >= 1 and event_round <= 10 and not seen_events.has(VAMPIRE_EVENT):
 		eligible.append(VAMPIRE_EVENT)
-	if round_number >= 10 and round_number <= 20 and not seen_events.has(MADNESS_EVENT):
+	if event_round >= 10 and event_round <= 20 and not seen_events.has(MADNESS_EVENT):
 		eligible.append(MADNESS_EVENT)
 	return eligible
 
@@ -1075,7 +1079,7 @@ func _apply_ritual() -> bool:
 	return true
 
 func _show_event() -> void:
-	var eligible := _eligible_events()
+	var eligible := _eligible_events(round_number + 1)
 	pending_event = false
 	if eligible.is_empty():
 		_log("등장 가능한 시험 이벤트가 없어 다음 라운드로 진행합니다.")
@@ -1098,7 +1102,7 @@ func _show_event() -> void:
 			"그냥 처음에 보여준거로 해주세요": options_box.add_child(_button("카드 한 장 무작위 변환", _start_card_event))
 			MADNESS_EVENT: options_box.add_child(_button("광기의 집념 획득\n병사 체력 절반 · 줄어든 만큼 공격력 증가", _choose_event.bind("madness")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
-	_log("이벤트: %s · 선택지 하나를 고르세요." % event_name)
+	_log("%d라운드 대기 이벤트: %s · 선택지 하나를 고르세요." % [round_number + 1, event_name])
 	_refresh()
 
 func _choose_event(choice: String) -> void:

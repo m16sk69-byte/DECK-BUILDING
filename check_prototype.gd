@@ -348,9 +348,11 @@ func check() -> void:
 	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
 	game.round_number = 9
-	assert(game._eligible_events().size() == 5 and not game._eligible_events().has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 5 and not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	game.round_number = 10
-	assert(game._eligible_events().size() == 6 and game._eligible_events().has(game.VAMPIRE_EVENT) and game._eligible_events().has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 6 and game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT) and game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
+	assert(game._eligible_events(9).has(game.VAMPIRE_EVENT) and not game._eligible_events(9).has(game.MADNESS_EVENT))
+	assert(not game._eligible_events(11).has(game.VAMPIRE_EVENT) and game._eligible_events(11).has(game.MADNESS_EVENT))
 	# Check selection with the current and larger candidate pools.
 	game.rng.seed = 143
 	for pool_size in [5, 19, 20]:
@@ -362,10 +364,12 @@ func check() -> void:
 		for i in range(20000): sample_counts[game._random_event(pool)] += 1
 		for count in sample_counts: assert(absf(float(count) - 20000.0 / pool_size) < 20000.0 / pool_size * 0.2)
 	assert(game._random_event([]) == null)
+	game.round_number = 9
 	game._show_event()
-	assert(not game._eligible_events().has(game.current_event) and game._eligible_events().size() == 5)
+	assert(not game._eligible_events(10).has(game.current_event) and game._eligible_events(10).size() == 5)
+	assert(game.summary.text.begins_with("10 / 20 라운드   |   대기 · 이벤트"))
 	game.round_number = 12
-	assert(not game._eligible_events().has(game.VAMPIRE_EVENT))
+	assert(not game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT))
 	game._new_game()
 	game.phase = "이벤트"
 	game.current_event = game.VAMPIRE_EVENT
@@ -410,9 +414,9 @@ func check() -> void:
 	# Madness affects living units and future cards; damaged units never heal when it is gained.
 	game._new_game()
 	game.round_number = 9
-	assert(not game._eligible_events().has(game.MADNESS_EVENT))
+	assert(not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	game.round_number = 10
-	assert(game._eligible_events().has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	var field_soldier := {"name":"고블린", "hp":13, "max_hp":20}
 	var resting_soldier := {"name":"고블린 궁수", "hp":3, "max_hp":10}
 	game.lanes[0].rooms[0].append(field_soldier)
@@ -585,6 +589,17 @@ func check() -> void:
 	game._select_card(game.hand.find(second_chimera))
 	game._slot_pressed(0, 0, true)
 	assert(game.lanes[0].rooms[0].size() == 2)
+	# The event after round 18 belongs to round 19; round 20 has no normal event.
+	game._new_game()
+	game.round_number = 18
+	game._wave_won()
+	assert(game.phase == "이벤트" and game.summary.text.begins_with("19 / 20 라운드   |   대기 · 이벤트"))
+	assert(game.party_box.get_child_count() == 1)
+	var events_before_twenty: int = game.event_index
+	game._choose_event("leave")
+	assert(game.phase == "준비" and game.round_number == 19)
+	game._wave_won()
+	assert(game.phase == "준비" and game.round_number == 20 and game.event_index == events_before_twenty)
 	game._new_game()
 	for round_index in range(1, 21):
 		assert(game.round_number == round_index)

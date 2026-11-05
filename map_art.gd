@@ -56,7 +56,7 @@ func _draw() -> void:
 		draw_line(Vector2(70,y),Vector2(1110,y),Color("607b78"), 2)
 	for lane in range(2):
 		var y := 82.0 + lane * 108.0
-		var highlighted: bool = not game.parties.is_empty() and game.parties[game.selected_party].lane == lane
+		var highlighted: bool = game.phase != "이벤트" and not game.parties.is_empty() and game.parties[game.selected_party].lane == lane
 		_text(Vector2(14,y+5), "위 경로" if lane == 0 else "아래 경로", 15, GOLD if highlighted else MUTED)
 		for pos in range(4):
 			var x: float = NODES[pos]
