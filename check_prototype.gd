@@ -143,8 +143,20 @@ func check() -> void:
 	assert(game.ENEMY_TYPES["도적"].hp == 10 and game.ENEMY_TYPES["도적"].attack == 8)
 	assert(game.ENEMY_TYPES["방패병"].hp == 20 and game.ENEMY_TYPES["방패병"].attack == 2)
 	assert(game.ENEMY_TYPES["저격수"].hp == 5 and game.ENEMY_TYPES["저격수"].attack == 15)
+	assert(game.ENEMY_BUDGETS == [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8, 20])
+	for test_round in range(1, 21):
+		game.round_number = test_round
+		for trial in range(20):
+			game._generate_parties()
+			var total_cost := 0
+			assert(game.parties.size() >= 1 and game.parties.size() <= 3)
+			for party in game.parties:
+				assert(party.units.size() >= 1 and party.units.size() <= 4)
+				for unit in party.units: total_cost += unit.enemy_cost
+			assert(total_cost == game.ENEMY_BUDGETS[test_round - 1])
 	game.round_number = 5
 	game._generate_parties()
+	assert(game.parties.size() == 1)
 	var boss_units: Array = game.parties[0].units
 	assert(boss_units.map(func(unit): return unit.name) == ["기사", "기사", "동국의 검사"])
 	assert(boss_units[0].hp == 24 and boss_units[0].attack == 6)
@@ -204,7 +216,7 @@ func check() -> void:
 	var test_party = {"lane":0, "units":[{"name":"적", "hp":100, "attack":1}]}
 	game._apply_traps(test_party, 0)
 	game._apply_traps(test_party, 0)
-	assert(trap.hits == 2 and test_party.units[0].hp == 92)
+	assert(trap.hits == 2 and test_party.units[0].hp == 88)
 	trap.active = false
 	game.gold = 10
 	game._slot_pressed(0, 0, false)
@@ -276,7 +288,7 @@ func check() -> void:
 	var first_party = {"lane":0, "units":[{"name":"앞", "hp":20}, {"name":"중간", "hp":20}, {"name":"뒤", "hp":20}]}
 	var second_party = {"lane":0, "units":[{"name":"혼자", "hp":20}]}
 	game._apply_traps(first_party, 0)
-	assert(first_party.units[0].hp == 20 and first_party.units[1].hp == 12 and first_party.units[2].hp == 12)
+	assert(first_party.units[0].hp == 20 and first_party.units[1].hp == 13 and first_party.units[2].hp == 13)
 	assert(not arrows.active and arrows.hits == 1)
 	game._apply_traps(second_party, 0)
 	assert(second_party.units[0].hp == 20 and arrows.hits == 1)
@@ -284,7 +296,7 @@ func check() -> void:
 	game._slot_pressed(0, 0, false)
 	assert(arrows.active and arrows.hits == 0 and game.gold == 25)
 	game._apply_traps(second_party, 0)
-	assert(second_party.units[0].hp == 12 and not arrows.active)
+	assert(second_party.units[0].hp == 13 and not arrows.active)
 	var rocks = {"name":"낙석", "active":true, "hits":0, "placed_round":1}
 	game.lanes[0].traps[1].append(rocks)
 	var rock_party = {"lane":0, "units":[{"name":"앞", "hp":20}, {"name":"뒤", "hp":20}]}

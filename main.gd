@@ -2,8 +2,8 @@ extends Control
 
 # Prototype values; see README for the assumptions behind them.
 const CARDS = {
-	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":4, "consumable":false, "description":"선두 1명 4 피해"},
-	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":8, "consumable":true, "description":"#소모성\n후방 2명 각 8 피해"},
+	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":6, "consumable":false, "description":"선두 1명 6 피해"},
+	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":7, "consumable":true, "description":"#소모성\n후방 2명 각 7 피해"},
 	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
@@ -13,10 +13,11 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 }
 const ENEMY_TYPES = {
-	"도적": {"hp":10, "attack":8, "targeting":"rear", "description":"후열 병사 공격"},
-	"방패병": {"hp":20, "attack":2, "targeting":"front", "description":"선두 병사 공격"},
-	"저격수": {"hp":5, "attack":15, "targeting":"highest_attack", "description":"공격력이 가장 높은 병사 공격"},
+	"도적": {"hp":10, "attack":8, "enemy_cost":1, "targeting":"rear", "description":"후열 병사 공격"},
+	"방패병": {"hp":20, "attack":2, "enemy_cost":2, "targeting":"front", "description":"선두 병사 공격"},
+	"저격수": {"hp":5, "attack":15, "enemy_cost":2, "targeting":"highest_attack", "description":"공격력이 가장 높은 병사 공격"},
 }
+const ENEMY_BUDGETS := [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8, 20]
 const TEST_KNIGHT_HP := 24
 const TEST_KNIGHT_ATTACK := 6
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
@@ -351,25 +352,38 @@ func _prepare_round() -> void:
 
 func _generate_parties() -> void:
 	parties.clear()
-	var count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
+	var remaining: int = ENEMY_BUDGETS[clampi(round_number, 1, 20) - 1]
+	var units: Array = []
+	if round_number == 5:
+		for i in range(2):
+			units.append({"name":"기사", "hp":TEST_KNIGHT_HP, "max_hp":TEST_KNIGHT_HP, "attack":TEST_KNIGHT_ATTACK, "enemy_cost":1, "targeting":"front", "description":"선두 병사 공격 · 수치 시험용"})
+		units.append({"name":"동국의 검사", "hp":50, "max_hp":50, "attack":10, "enemy_cost":3, "targeting":"front", "description":"두 번째 공격마다 공격력 +5 후 공격", "attack_count":0, "attack_boost_interval":2, "attack_boost":5})
+		remaining -= 5
+	elif round_number % 5 == 0:
+		units.append({"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "enemy_cost":4, "description":"임시 보스"})
+		remaining -= 4
+	# Fill the hidden round budget while reserving enough room for cost-2 enemies.
+	while remaining > 0 and units.size() < 12:
+		var eligible: Array = []
+		var slots_after: int = 12 - units.size() - 1
+		for role in ENEMY_TYPES:
+			var unit_cost: int = ENEMY_TYPES[role].enemy_cost
+			if unit_cost <= remaining and remaining - unit_cost <= slots_after * 2: eligible.append(role)
+		if eligible.is_empty(): break
+		var role: String = eligible[rng.randi_range(0, eligible.size() - 1)]
+		var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
+		enemy["name"] = role
+		enemy["max_hp"] = enemy.hp
+		units.append(enemy)
+		remaining -= enemy.enemy_cost
+	var desired_count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
+	var count := 1 if round_number == 5 else mini(units.size(), maxi(desired_count, ceili(units.size() / 4.0)))
 	for p in range(count):
-		var units := []
-		if round_number == 5 and p == 0:
-			for i in range(2):
-				units.append({"name":"기사", "hp":TEST_KNIGHT_HP, "max_hp":TEST_KNIGHT_HP, "attack":TEST_KNIGHT_ATTACK, "targeting":"front", "description":"선두 병사 공격 · 수치 시험용"})
-			units.append({"name":"동국의 검사", "hp":50, "max_hp":50, "attack":10, "targeting":"front", "description":"두 번째 공격마다 공격력 +5 후 공격", "attack_count":0, "attack_boost_interval":2, "attack_boost":5})
-		else:
-			var enemy_count := mini(4, 2 + int(round_number / 6))
-			var roles := ENEMY_TYPES.keys()
-			for i in range(enemy_count):
-				var role: String = roles[rng.randi_range(0, roles.size() - 1)]
-				var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
-				enemy["name"] = role
-				enemy["max_hp"] = enemy.hp
-				units.append(enemy)
-			if round_number % 5 == 0 and p == 0:
-				units[0] = {"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "description":"임시 보스"}
-		parties.append({"lane":rng.randi_range(0, 1), "units":units, "pos":-1, "done":false})
+		parties.append({"lane":rng.randi_range(0, 1), "units":[], "pos":-1, "done":false})
+	if round_number == 5:
+		parties[0].units.append_array(units)
+	else:
+		for i in range(units.size()): parties[i % count].units.append(units[i])
 	selected_party = 0
 
 func _set_mode(value: String) -> void:
