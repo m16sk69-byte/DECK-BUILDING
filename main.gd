@@ -11,12 +11,14 @@ const CARDS = {
 	"오크": {"type":"soldier", "cost":2, "hp":25, "attack":10, "front_only":true, "description":"HP 25 · 공격 10\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"궁수": {"type":"soldier", "cost":1, "hp":16, "attack":7, "description":"HP 16 · 선두 7 피해"},
-	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "description":"HP 14 · 전체 4 피해"},
+	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 }
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1"]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "시험 이벤트 3", "시험 이벤트 4"]
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
 const NOCTIS_PRICE := 30
+const RITUAL_KEYWORDS = {"regen":5, "lifesteal":2, "blur":0, "poison":5, "bleed":3}
+const KEYWORD_NAMES = {"regen":"재생", "lifesteal":"흡혈", "blur":"흐릿함", "poison":"중독", "bleed":"출혈"}
 const RESEARCH_PRICE := 70
 const REST_HEAL_RATE := 0.30
 var rng := RandomNumberGenerator.new()
@@ -611,6 +613,9 @@ func _refresh() -> void:
 		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
 		if data.get("regen", 0) > 0: keyword_help += "#재생: 매 라운드 준비 시작 시 표시된 만큼 회복합니다.\n"
 		if data.get("lifesteal", 0) > 0: keyword_help += "#흡혈: 공격할 때 표시된 만큼 회복합니다.\n"
+		if data.get("blur", false): keyword_help += "#흐릿함: 다른 병사가 있으면 단일 공격의 대상이 되지 않습니다.\n"
+		if data.get("poison", 0) > 0: keyword_help += "#중독: 대상이 행동할 때 표시된 만큼 피해를 입습니다.\n"
+		if data.get("bleed", 0) > 0: keyword_help += "#출혈: 대상이 피해를 입을 때 표시된 만큼 추가 피해를 입습니다.\n"
 		if data.get("unique", false): keyword_help += "#고유: 같은 병사가 배치 또는 휴식 중이면 배치할 수 없습니다.\n"
 		card_button.tooltip_text = keyword_help
 		if _unique_in_play(card.name):
@@ -633,9 +638,29 @@ func _damage_enemy(unit: Dictionary, amount: int, source: String) -> void:
 	damage_total += actual
 	battle_notice = "%s → %s · %d 피해" % [source, unit.name, actual]
 	_log("%s → %s %d 피해 (HP %d)" % [source, unit.name, actual, unit.hp])
+	if actual > 0 and unit.hp > 0 and unit.get("bleed", 0) > 0:
+		var extra: int = mini(unit.hp, unit.bleed)
+		unit.hp -= extra
+		damage_total += extra
+		_log("%s #출혈 %d 피해 (HP %d)" % [unit.name, extra, unit.hp])
+
+func _soldier_hit_enemy(unit: Dictionary, amount: int, ally: Dictionary) -> void:
+	_damage_enemy(unit, amount, ally.name)
+	if unit.hp <= 0 or amount <= 0: return
+	var data: Dictionary = card_defs[ally.name]
+	for keyword in ["poison", "bleed"]:
+		var strength: int = data.get(keyword, 0)
+		if strength > 0:
+			unit[keyword] = maxi(unit.get(keyword, 0), strength)
+			_log("%s에게 #%s%d 적용" % [unit.name, KEYWORD_NAMES[keyword], unit[keyword]])
 
 func _live_enemies(party: Dictionary) -> Array:
 	return party.units.filter(func(unit): return unit.hp > 0)
+
+func _single_target_soldier(soldiers: Array) -> Dictionary:
+	for soldier in soldiers:
+		if not card_defs[soldier.name].get("blur", false): return soldier
+	return soldiers.front()
 
 func _apply_traps(party: Dictionary, slot: int) -> void:
 	for trap in lanes[party.lane].traps[slot]:
@@ -667,10 +692,10 @@ func _fight(party: Dictionary, slot: int) -> void:
 			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
 				var ally: Dictionary = allies[i]
 				var attack: int = card_defs[ally.name].attack + soldier_bonus
-				if ally.name == "마법사":
-					for enemy in _live_enemies(party): _damage_enemy(enemy, attack, ally.name)
+				if card_defs[ally.name].get("area_attack", false):
+					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
 				else:
-					_damage_enemy(_live_enemies(party).front(), attack, ally.name)
+					_soldier_hit_enemy(_live_enemies(party).front(), attack, ally)
 				var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
 				if lifesteal > 0:
 					var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
@@ -682,13 +707,17 @@ func _fight(party: Dictionary, slot: int) -> void:
 					if fight_token != wave_token: return
 			if i < enemies.size() and enemies[i].hp > 0 and not soldiers.is_empty():
 				var enemy: Dictionary = enemies[i]
-				var target: Dictionary = soldiers.front()
-				target.hp = maxi(0, target.hp - enemy.attack)
-				battle_notice = "%s → %s · %d 피해" % [enemy.name, target.name, enemy.attack]
-				_log("%s → %s %d 피해 (HP %d)" % [enemy.name, target.name, enemy.attack, target.hp])
-				if target.hp <= 0:
-					soldiers.erase(target)
-					_log("%s 전사" % target.name)
+				if enemy.get("poison", 0) > 0:
+					_damage_enemy(enemy, enemy.poison, "#중독")
+					if enemy.hp <= 0: continue
+				var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers)]
+				for target in targets:
+					target.hp = maxi(0, target.hp - enemy.attack)
+					battle_notice = "%s → %s · %d 피해" % [enemy.name, target.name, enemy.attack]
+					_log("%s → %s %d 피해 (HP %d)" % [enemy.name, target.name, enemy.attack, target.hp])
+					if target.hp <= 0:
+						soldiers.erase(target)
+						_log("%s 전사" % target.name)
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
@@ -873,13 +902,17 @@ func _finish_research() -> void:
 	var b: Dictionary = card_defs[materials[1].name]
 	var name_value := "키메라 #%d" % next_card_id
 	var result := {"type":"soldier", "cost":roundi((a.cost + b.cost) / 2.0), "hp":a.hp + b.hp, "attack":a.attack + b.attack}
-	for keyword in ["regen", "lifesteal"]:
+	for keyword in ["regen", "lifesteal", "poison", "bleed"]:
 		var amount: int = a.get(keyword, 0) + b.get(keyword, 0)
 		if amount > 0: result[keyword] = amount
 	if a.get("front_only", false) or b.get("front_only", false): result["front_only"] = true
+	if a.get("blur", false) or b.get("blur", false): result["blur"] = true
 	var description := "HP %d · 공격 %d" % [result.hp, result.attack]
 	if result.get("regen", 0) > 0: description += "\n#재생%d" % result.regen
 	if result.get("lifesteal", 0) > 0: description += " #흡혈%d" % result.lifesteal
+	if result.get("blur", false): description += " #흐릿함"
+	if result.get("poison", 0) > 0: description += " #중독%d" % result.poison
+	if result.get("bleed", 0) > 0: description += " #출혈%d" % result.bleed
 	if result.get("front_only", false): description += " 선두 고정"
 	result["description"] = description
 	card_defs[name_value] = result
@@ -897,6 +930,13 @@ func _finish_research() -> void:
 	_clear(options_box)
 	_next_round()
 
+func _ritual_keyword_candidates(data: Dictionary) -> Array:
+	var missing: Array = []
+	for keyword in RITUAL_KEYWORDS:
+		if not data.get(keyword, false if keyword == "blur" else 0): missing.append(keyword)
+	if not missing.is_empty(): return missing
+	return ["regen", "lifesteal", "poison", "bleed"]
+
 func _apply_ritual() -> bool:
 	var candidates := _research_candidates()
 	if candidates.is_empty():
@@ -905,12 +945,14 @@ func _apply_ritual() -> bool:
 	var card: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)]
 	var old_name: String = card.name
 	var data: Dictionary = card_defs[old_name].duplicate(true)
-	var keyword: String = ["regen", "lifesteal"][rng.randi_range(0, 1)]
-	var amount := 10 if keyword == "regen" else 3
-	data[keyword] = data.get(keyword, 0) + amount
+	var choices := _ritual_keyword_candidates(data)
+	var keyword: String = choices[rng.randi_range(0, choices.size() - 1)]
+	var amount: int = RITUAL_KEYWORDS[keyword]
+	if keyword == "blur": data[keyword] = true
+	else: data[keyword] = data.get(keyword, 0) + amount
 	data["unique_group"] = data.get("unique_group", old_name)
 	var new_name := "%s [강화 #%d]" % [old_name, card.id]
-	var keyword_label := "#재생%d" % amount if keyword == "regen" else "#흡혈%d" % amount
+	var keyword_label: String = "#%s%s" % [KEYWORD_NAMES[keyword], str(amount) if keyword != "blur" else ""]
 	data["description"] += "\n추가 " + keyword_label
 	card_defs[new_name] = data
 	if card_icons.has(old_name): card_icons[new_name] = card_icons[old_name]

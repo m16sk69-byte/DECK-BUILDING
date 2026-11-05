@@ -399,7 +399,12 @@ func check() -> void:
 	assert(game.gold == 0 and game.deck.size() == 1 and unique_card.name != "녹티스")
 	var upgraded: Dictionary = game.card_defs[unique_card.name]
 	assert(upgraded.unique and upgraded.unique_group == "녹티스")
-	assert((upgraded.get("regen", 0) == 10 and upgraded.lifesteal == 3) or upgraded.lifesteal == 6)
+	assert(upgraded.lifesteal == 3)
+	assert(upgraded.get("regen", 0) == 5 or upgraded.get("blur", false) or upgraded.get("poison", 0) == 5 or upgraded.get("bleed", 0) == 3)
+	assert(game._ritual_keyword_candidates({}).size() == 5)
+	assert(not game._ritual_keyword_candidates({"regen":5}).has("regen"))
+	var all_keywords := {"regen":5, "lifesteal":2, "blur":true, "poison":5, "bleed":3}
+	assert(game._ritual_keyword_candidates(all_keywords).size() == 4 and not game._ritual_keyword_candidates(all_keywords).has("blur"))
 	game.lanes[0].rooms[0].append({"name":"녹티스", "hp":20})
 	assert(game._unique_in_play(unique_card.name))
 	game._new_game()
@@ -411,10 +416,59 @@ func check() -> void:
 	assert(changed.size() == 1 and not game.card_defs[changed[0].name].get("unique", false))
 	game.deck.clear()
 	assert(not game._apply_ritual())
+	# A missing keyword is selected first; with all five, only one numeric value increases.
+	game._new_game()
+	var complete_data := {"regen":5, "lifesteal":2, "blur":true, "poison":5, "bleed":3}
+	assert(game._ritual_keyword_candidates({"regen":5, "lifesteal":2, "poison":5, "bleed":3}) == ["blur"])
+	game.card_defs["고블린"].merge(complete_data, true)
+	var complete_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[0]
+	game.deck = [complete_card]
+	assert(game._apply_ritual())
+	var raised: Dictionary = game.card_defs[complete_card.name]
+	var increases := 0
+	for keyword in ["regen", "lifesteal", "poison", "bleed"]:
+		var delta: int = raised[keyword] - complete_data[keyword]
+		assert(delta == 0 or delta == game.RITUAL_KEYWORDS[keyword])
+		if delta > 0: increases += 1
+	assert(increases == 1 and raised.blur)
+	# Blur postpones single-target attacks but does not avoid area attacks.
+	game._new_game()
+	game.card_defs["흐릿한 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["흐릿한 병사"]["blur"] = true
+	var hidden := {"name":"흐릿한 병사", "hp":10, "max_hp":10}
+	var visible := {"name":"고블린", "hp":10, "max_hp":10}
+	assert(game._single_target_soldier([hidden, visible]) == visible)
+	assert(game._single_target_soldier([hidden]) == hidden)
+	game.lanes[0].rooms[0].append_array([hidden, visible])
+	game._fight({"lane":0, "units":[{"name":"광역 적", "hp":6, "attack":3, "area_attack":true}]}, 0)
+	assert(hidden.hp == 7 and visible.hp == 7)
+	# Poison hits before actions; bleed adds damage without recursively triggering itself.
+	game._new_game()
+	game.card_defs["상태이상 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["상태이상 병사"]["poison"] = 5
+	game.card_defs["상태이상 병사"]["bleed"] = 3
+	var status_ally := {"name":"상태이상 병사", "hp":20, "max_hp":20}
+	var status_enemy := {"name":"적", "hp":20, "attack":1}
+	game.lanes[0].rooms[0].append(status_ally)
+	game._fight({"lane":0, "units":[status_enemy]}, 0)
+	assert(status_enemy.hp == 0 and status_ally.hp == 19)
+	assert(status_enemy.poison == 5 and status_enemy.bleed == 3)
+	game._new_game()
+	game.card_defs["독 병사"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["독 병사"]["poison"] = 5
+	var poison_ally := {"name":"독 병사", "hp":20, "max_hp":20}
+	var poison_enemy := {"name":"적", "hp":10, "attack":99}
+	game.lanes[0].rooms[0].append(poison_ally)
+	game._fight({"lane":0, "units":[poison_enemy]}, 0)
+	assert(poison_enemy.hp == 0 and poison_ally.hp == 20)
 	# Research keeps the deck and gold untouched until two distinct cards are confirmed.
 	game._new_game()
 	game._add_card("언데드 골렘")
 	game._add_card("녹티스")
+	game.card_defs["언데드 골렘"]["poison"] = 5
+	game.card_defs["녹티스"]["poison"] = 5
+	game.card_defs["녹티스"]["bleed"] = 3
+	game.card_defs["녹티스"]["blur"] = true
 	var material_a: Dictionary = game.deck[-2]
 	var material_b: Dictionary = game.deck[-1]
 	game.discard_pile.erase(material_a)
@@ -441,6 +495,7 @@ func check() -> void:
 	var chimera_data: Dictionary = game.card_defs[chimera.name]
 	assert(chimera_data.cost == 3 and chimera_data.hp == 50 and chimera_data.attack == 12)
 	assert(chimera_data.regen == 10 and chimera_data.lifesteal == 3 and not chimera_data.get("unique", false))
+	assert(chimera_data.poison == 10 and chimera_data.bleed == 3 and chimera_data.blur)
 	assert(not "#고유" in chimera_data.description)
 	# A generated card remains deployable with its calculated stats.
 	if not game.hand.has(chimera):
