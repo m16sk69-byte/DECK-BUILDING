@@ -53,6 +53,7 @@ func check() -> void:
 	game._slot_pressed(0, 0, false)
 	game.lanes[0].traps[0][0].hits = 1
 	game._wave_won()
+	game._choose_card_reward("")
 	var old_gold = game.gold
 	var old_cost = game.cost
 	var old_hand_size = game.hand.size()
@@ -235,6 +236,7 @@ func check() -> void:
 	game.lanes[0].rooms[0].append({"name":"고블린", "hp":13, "max_hp":24, "placed_round":1})
 	game._discard_hand()
 	game._wave_won()
+	game._choose_card_reward("")
 	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 13 and game.deck.size() == before)
 	assert(not trap.active and game.hand.size() == 5)
 	assert(game.gold == 10 and unused_trap.active and unused_trap.hits == 0)
@@ -266,6 +268,7 @@ func check() -> void:
 	game.lanes[0].traps[0][0].active = true
 	game._start_wave()
 	while game.phase == "웨이브": await create_timer(0.01).timeout
+	game._choose_card_reward("")
 	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
 	assert(game.reserves[1].healed and nearly_full.hp == 14)
 	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
@@ -310,6 +313,7 @@ func check() -> void:
 	game.parties = [{"lane":0, "units":[{"name":"적", "hp":10, "max_hp":10, "attack":1}], "pos":-1, "done":false}]
 	game._start_wave()
 	while game.phase == "웨이브": await create_timer(0.01).timeout
+	game._choose_card_reward("")
 	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 21)
 	# Starting a new game during the animated fight must cancel the old wave.
 	game._new_game()
@@ -511,6 +515,7 @@ func check() -> void:
 	game.phase = "보스 보상"
 	game.pending_event = false
 	game._choose_reward(game.COST_DRAW_RELIC)
+	game._choose_card_reward("")
 	assert(game.max_cost == 6 and game.cost == 6 and game.hand.size() == 4)
 	assert(game.rewards_used.has(game.COST_DRAW_RELIC) and game.draw_penalty == 1)
 	# Ritual upgrades exactly one random deck card without adding #unique.
@@ -657,16 +662,65 @@ func check() -> void:
 	game._select_card(game.hand.find(second_chimera))
 	game._slot_pressed(0, 0, true)
 	assert(game.lanes[0].rooms[0].size() == 2)
+	# Front-target traps fire before rear/all traps for a multi-unit party.
+	game._new_game()
+	var rear_trap = {"name":"화살", "active":true, "hits":0, "placed_round":1}
+	var front_trap = {"name":"가시", "active":true, "hits":0, "placed_round":1}
+	game.lanes[0].traps[0] = [rear_trap, front_trap]
+	var priority_party = {"lane":0, "units":[{"name":"앞", "hp":6, "max_hp":6, "attack":1}, {"name":"뒤", "hp":15, "max_hp":15, "attack":1}]}
+	game.log_lines.clear()
+	game._apply_traps(priority_party, 0)
+	assert(game.log_lines[0].begins_with("가시 → 앞") and game.log_lines[1].begins_with("화살 → 뒤"))
+	assert(priority_party.units[0].hp == 0 and priority_party.units[1].hp == 8)
+	# If earlier front traps defeat everyone, the remaining trap stays loaded for free.
+	game._new_game()
+	var unused_arrow = {"name":"화살", "active":true, "hits":0, "placed_round":1}
+	var spike_one = {"name":"가시", "active":true, "hits":0, "placed_round":1}
+	var spike_two = {"name":"가시", "active":true, "hits":0, "placed_round":1}
+	game.lanes[0].traps[0] = [unused_arrow, spike_one, spike_two]
+	var doomed_party = {"lane":0, "units":[{"name":"앞", "hp":6, "attack":1}, {"name":"뒤", "hp":6, "attack":1}]}
+	game._apply_traps(doomed_party, 0)
+	assert(unused_arrow.active and unused_arrow.hits == 0 and spike_one.hits == 1 and spike_two.hits == 1)
+	# Player-selected order controls traps of equal priority and all traps against one enemy.
+	game._new_game()
+	game.card_defs["시험 선두"] = {"type":"trap", "slot":"벽", "targeting":"front", "damage":12}
+	var small_trap = {"name":"가시", "active":true, "hits":0, "placed_round":1}
+	var large_trap = {"name":"시험 선두", "active":true, "hits":0, "placed_round":1}
+	game.lanes[0].traps[0] = [small_trap, large_trap]
+	game._set_mode("trap_order")
+	game._move_trap_order(0, 0, 1, -1)
+	assert(game.lanes[0].traps[0][0] == large_trap)
+	game._apply_traps({"lane":0, "units":[{"name":"적", "hp":6, "attack":1}]}, 0)
+	assert(large_trap.hits == 1 and small_trap.hits == 0)
+	# The snapshot survives the transition to the next round, and the chosen reward goes to discard.
+	game._new_game()
+	game.parties = [{"lane":0, "pos":1, "done":true, "units":[{"name":"도적", "hp":0, "max_hp":10, "attack":8}]}]
+	game._wave_won()
+	assert(game.phase == "카드 보상" and game.offered_cards.size() == 3 and game.showing_previous)
+	assert(game.offered_cards.duplicate().filter(func(name): return name == game.offered_cards[0]).size() == 1)
+	assert(not game.offered_cards.has("녹티스") and not game.offered_cards.has("언데드 골렘"))
+	var chosen_reward: String = game.offered_cards[0]
+	var reward_deck_size = game.deck.size()
+	game._choose_card_reward(chosen_reward)
+	assert(game.deck.size() == reward_deck_size + 1 and game.discard_pile.any(func(card): return card.name == chosen_reward))
+	assert(game.round_number == 2 and game.previous_round == 1 and game.previous_parties[0].units[0].hp == 0)
+	game._show_current_party()
+	game._select_previous_party(0)
+	assert(game.showing_previous and game.enemy_detail_box.get_child_count() >= 4)
+	var hp_bar: ProgressBar = game.enemy_detail_box.get_child(3).get_child(1).get_child(1).get_child(0)
+	assert(hp_bar.value == 0 and hp_bar.max_value == 10)
 	# The event after round 18 belongs to round 19; round 20 has no normal event.
 	game._new_game()
 	game.round_number = 18
 	game._wave_won()
+	game._choose_card_reward("")
 	assert(game.phase == "이벤트" and game.summary.text.begins_with("19 / 20 라운드   |   대기 · 이벤트"))
 	assert(game.party_box.get_child_count() == 1)
 	var events_before_twenty: int = game.event_index
 	game._choose_event("leave")
 	assert(game.phase == "준비" and game.round_number == 19)
 	game._wave_won()
+	game._choose_card_reward("")
 	assert(game.phase == "준비" and game.round_number == 20 and game.event_index == events_before_twenty)
 	game._new_game()
 	for round_index in range(1, 21):
@@ -676,6 +730,9 @@ func check() -> void:
 		if game.phase == "보스 보상":
 			if round_index == 10: assert(game.pending_event)
 			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
+		if game.phase == "카드 보상":
+			assert(game.offered_cards.size() == 3)
+			game._choose_card_reward("")
 			if round_index == 10: assert(game.phase == "이벤트")
 		if game.phase == "이벤트": game._choose_event("leave")
 	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index >= 5 and game.event_index <= 6)

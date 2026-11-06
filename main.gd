@@ -2,9 +2,9 @@ extends Control
 
 # Prototype values; see README for the assumptions behind them.
 const CARDS = {
-	"가시": {"type":"trap", "slot":"바닥", "cost":1, "damage":6, "consumable":false, "description":"선두 1명 6 피해"},
-	"화살": {"type":"trap", "slot":"벽", "cost":1, "damage":7, "consumable":true, "description":"#소모성\n후방 2명 각 7 피해"},
-	"낙석": {"type":"trap", "slot":"천장", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
+	"가시": {"type":"trap", "slot":"바닥", "targeting":"front", "cost":1, "damage":6, "consumable":false, "description":"선두 1명 6 피해"},
+	"화살": {"type":"trap", "slot":"벽", "targeting":"rear", "cost":1, "damage":7, "consumable":true, "description":"#소모성\n후방 2명 각 7 피해"},
+	"낙석": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
@@ -22,6 +22,7 @@ const TEST_KNIGHT_HP := 24
 const TEST_KNIGHT_ATTACK := 6
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
+const ROUND_CARD_POOL = ["고블린", "고블린 궁수", "오크", "가시", "화살", "낙석"]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
@@ -57,6 +58,11 @@ var cards_used := 0
 var selected_card := -1
 var mode := "card"
 var selected_party := 0
+var previous_parties: Array = []
+var previous_round := 0
+var selected_previous_party := 0
+var showing_previous := false
+var offered_cards: Array = []
 var speed := 0.4
 var played_rounds := 0
 var rewards_used: Array = []
@@ -76,6 +82,7 @@ var music_enabled := true
 var summary: Label
 var status_label: Label
 var party_box: VBoxContainer
+var enemy_detail_box: VBoxContainer
 var hand_box: HBoxContainer
 var board_box: VBoxContainer
 var reserves_box: VBoxContainer
@@ -204,19 +211,31 @@ func _build_ui() -> void:
 	action_box.add_child(_button("병사 순서", _set_mode.bind("order")))
 	action_box.add_child(_button("병사 휴식", _set_mode.bind("rest")))
 	action_box.add_child(_button("함정 재장전", _set_mode.bind("rearm")))
+	action_box.add_child(_button("함정 순서", _set_mode.bind("trap_order")))
 	start_button = _button("웨이브 시작", _start_wave)
 	action_box.add_child(start_button)
 	action_box.add_child(_button("속도 변경", _toggle_speed))
 	music_button = _button("배경음: 켬", _toggle_music)
 	action_box.add_child(music_button)
 	action_box.add_child(_button("새 게임", _new_game))
+	var details_row := HBoxContainer.new()
+	root.add_child(details_row)
+	var left_details := VBoxContainer.new()
+	left_details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details_row.add_child(left_details)
+	var enemy_panel := PanelContainer.new()
+	enemy_panel.custom_minimum_size = Vector2(320, 260)
+	details_row.add_child(enemy_panel)
+	enemy_detail_box = VBoxContainer.new()
+	enemy_detail_box.add_theme_constant_override("separation", 5)
+	enemy_panel.add_child(enemy_detail_box)
 	reserves_box = VBoxContainer.new()
-	root.add_child(reserves_box)
+	left_details.add_child(reserves_box)
 	options_box = HBoxContainer.new()
-	root.add_child(options_box)
-	root.add_child(_label("손패 · 각 카드를 누른 뒤 배치할 칸을 누르세요", 19))
+	left_details.add_child(options_box)
+	left_details.add_child(_label("손패 · 각 카드를 누른 뒤 배치할 칸을 누르세요", 19))
 	hand_box = HBoxContainer.new()
-	root.add_child(hand_box)
+	left_details.add_child(hand_box)
 	root.add_child(_label("진행 및 전투 기록", 19))
 	log_box = RichTextLabel.new()
 	log_box.custom_minimum_size = Vector2(0, 230)
@@ -286,6 +305,11 @@ func _new_game() -> void:
 	played_rounds = 0
 	selected_card = -1
 	selected_party = 0
+	previous_parties.clear()
+	previous_round = 0
+	selected_previous_party = 0
+	showing_previous = false
+	offered_cards.clear()
 	mode = "card"
 	rewards_used.clear()
 	event_index = 0
@@ -427,6 +451,27 @@ func _select_card(index: int) -> void:
 
 func _select_party(index: int) -> void:
 	selected_party = index
+	showing_previous = false
+	_refresh()
+
+func _select_previous_party(index: int) -> void:
+	if index < 0 or index >= previous_parties.size(): return
+	selected_previous_party = index
+	showing_previous = true
+	_refresh()
+
+func _show_current_party() -> void:
+	showing_previous = false
+	_refresh()
+
+func _move_trap_order(lane: int, slot: int, index: int, direction: int) -> void:
+	if phase != "준비" or mode != "trap_order": return
+	var traps: Array = lanes[lane].traps[slot]
+	var target := index + direction
+	if index < 0 or index >= traps.size() or target < 0 or target >= traps.size(): return
+	var trap: Dictionary = traps.pop_at(index)
+	traps.insert(target, trap)
+	_log("%s 함정 발동 순서 변경" % trap.name)
 	_refresh()
 
 func _soldier_pressed(lane: int, slot: int, index: int) -> void:
@@ -526,6 +571,8 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		_log("방 아래의 병사 버튼을 선택하면 휴식시킬 수 있습니다.")
 	elif mode == "order":
 		_log("지도 아래의 병사 버튼을 선택해 순서를 바꾸세요.")
+	elif mode == "trap_order":
+		_log("지도 아래에서 함정의 화살표 버튼으로 순서를 바꾸세요.")
 	elif mode == "remove":
 		if placements.is_empty(): return
 		if not is_room:
@@ -617,7 +664,7 @@ func _refresh() -> void:
 	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [displayed_round, displayed_phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
 	if madness_relic: summary.text += "   |   유물: 광기의 집념"
 	if draw_penalty > 0: summary.text += "   |   턴 드로우 %d장" % maxi(0, 5 - draw_penalty)
-	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"지도 아래 함정 선택해 철거 · 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭"}
+	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"지도 아래 함정 선택해 철거 · 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	start_button.disabled = phase != "준비"
 	_clear(party_box)
@@ -632,6 +679,7 @@ func _refresh() -> void:
 		var location := "처치" if party.done else ("입구 대기" if party.pos < 0 else ("통로 %d" % (int(party.pos / 2) + 1) if party.pos % 2 == 0 else "방 %d" % (int(party.pos / 2) + 1)))
 		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, "위" if party.lane == 0 else "아래", location, " / ".join(descriptions)]
 		party_box.add_child(_button(label_value, _select_party.bind(i)))
+	_refresh_enemy_details()
 	_clear(board_box)
 	var map_view = preload("res://map_art.gd").new()
 	map_view.game = self
@@ -663,6 +711,26 @@ func _refresh() -> void:
 					var trap: Dictionary = lanes[lane].traps[slot][i]
 					var state := "이번 배치·환급" if trap.placed_round == round_number else "기존·환급 없음"
 					trap_row.add_child(_button("통로%d %s\n%s" % [slot + 1, trap.name, state], _remove_trap.bind(lane, slot, i)))
+	if mode == "trap_order":
+		for lane in range(2):
+			for slot in range(2):
+				var trap_list: Array = lanes[lane].traps[slot]
+				if trap_list.is_empty(): continue
+				var trap_row := HBoxContainer.new()
+				board_box.add_child(trap_row)
+				trap_row.add_child(_label("%s 통로%d:" % ["위" if lane == 0 else "아래", slot + 1], 14))
+				for i in range(trap_list.size()):
+					var trap: Dictionary = trap_list[i]
+					var priority := "선두 우선" if card_defs[trap.name].get("targeting", "front") == "front" else "일반"
+					trap_row.add_child(_label("%d. %s (%s)" % [i + 1, trap.name, priority], 14))
+					var earlier := _button("←", _move_trap_order.bind(lane, slot, i, -1))
+					earlier.custom_minimum_size = Vector2(36, 36)
+					earlier.disabled = i == 0
+					trap_row.add_child(earlier)
+					var later := _button("→", _move_trap_order.bind(lane, slot, i, 1))
+					later.custom_minimum_size = Vector2(36, 36)
+					later.disabled = i == trap_list.size() - 1
+					trap_row.add_child(later)
 	_clear(reserves_box)
 	reserves_box.add_child(_label("휴식 병사 · 회복 완료 또는 휴식 취소 후 무료 재배치", 16))
 	var reserve_row := HBoxContainer.new()
@@ -700,6 +768,58 @@ func _refresh() -> void:
 			card_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 			card_button.add_theme_constant_override("icon_max_width", 88)
 		hand_box.add_child(card_button)
+
+func _refresh_enemy_details() -> void:
+	_clear(enemy_detail_box)
+	enemy_detail_box.add_child(_label("적 파티 정보", 18))
+	var tabs := HBoxContainer.new()
+	enemy_detail_box.add_child(tabs)
+	var current_button := _button("현재", _show_current_party)
+	current_button.custom_minimum_size = Vector2(65, 32)
+	tabs.add_child(current_button)
+	for i in range(previous_parties.size()):
+		var old_button := _button("직전 %d" % (i + 1), _select_previous_party.bind(i))
+		old_button.custom_minimum_size = Vector2(70, 32)
+		tabs.add_child(old_button)
+	var visible_parties: Array = previous_parties if showing_previous else parties
+	var index := selected_previous_party if showing_previous else selected_party
+	if visible_parties.is_empty() or index < 0 or index >= visible_parties.size():
+		enemy_detail_box.add_child(_label("표시할 적 파티가 없습니다.", 14))
+		return
+	var party: Dictionary = visible_parties[index]
+	var party_title := "%s · 파티 %d · %s 경로" % ["%d라운드 결과" % previous_round if showing_previous else "현재", index + 1, "위" if party.lane == 0 else "아래"]
+	enemy_detail_box.add_child(_label(party_title, 14))
+	for unit in party.units:
+		var row := HBoxContainer.new()
+		enemy_detail_box.add_child(row)
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(38, 38)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture = sprite_icons.get("enemy_" + str(unit.name), sprite_icons.get("enemy_보스"))
+		row.add_child(icon)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info)
+		var hp: int = maxi(0, unit.hp)
+		var max_hp: int = maxi(1, unit.get("max_hp", unit.hp))
+		info.add_child(_label("%s · 공격 %d%s" % [unit.name, unit.attack, " · 처치" if hp <= 0 else ""], 14))
+		var health_row := HBoxContainer.new()
+		info.add_child(health_row)
+		var bar := ProgressBar.new()
+		bar.custom_minimum_size = Vector2(110, 14)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.max_value = max_hp
+		bar.value = hp
+		bar.show_percentage = false
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color("dc716e")
+		bar.add_theme_stylebox_override("fill", fill)
+		health_row.add_child(bar)
+		var hp_label := _label("%d/%d" % [hp, max_hp], 13)
+		hp_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		hp_label.custom_minimum_size.x = 62
+		health_row.add_child(hp_label)
 
 func _toggle_speed() -> void:
 	speed = 0.04 if speed >= 0.4 else 0.4
@@ -744,7 +864,16 @@ func _single_target_soldier(soldiers: Array, targeting := "front") -> Dictionary
 	return candidates.front()
 
 func _apply_traps(party: Dictionary, slot: int) -> void:
-	for trap in lanes[party.lane].traps[slot]:
+	var traps: Array = lanes[party.lane].traps[slot]
+	var ordered: Array = []
+	if _live_enemies(party).size() >= 2:
+		for trap in traps:
+			if card_defs[trap.name].get("targeting", "front") == "front": ordered.append(trap)
+		for trap in traps:
+			if card_defs[trap.name].get("targeting", "front") != "front": ordered.append(trap)
+	else:
+		ordered = traps.duplicate()
+	for trap in ordered:
 		if not trap.active: continue
 		var targets := _live_enemies(party)
 		if targets.is_empty(): break
@@ -752,9 +881,10 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		if card_defs[trap.name].get("consumable", false):
 			trap.active = false
 		var damage: int = card_defs[trap.name].damage + trap_bonus
-		if trap.name == "낙석":
+		var targeting: String = card_defs[trap.name].get("targeting", "front")
+		if targeting == "all":
 			for unit in targets: _damage_enemy(unit, damage, trap.name)
-		elif trap.name == "화살":
+		elif targeting == "rear":
 			for i in range(maxi(0, targets.size() - 2), targets.size()):
 				_damage_enemy(targets[i], damage, trap.name)
 		else:
@@ -813,6 +943,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 
 func _start_wave() -> void:
 	if phase != "준비": return
+	showing_previous = false
 	_discard_hand()
 	moving_soldier.clear()
 	selected_order.clear()
@@ -855,6 +986,10 @@ func _start_wave() -> void:
 
 func _wave_won() -> void:
 	played_rounds = round_number
+	previous_parties = parties.duplicate(true)
+	previous_round = round_number
+	selected_previous_party = clampi(selected_party, 0, maxi(0, previous_parties.size() - 1))
+	showing_previous = not previous_parties.is_empty()
 	gold += 10
 	_log("%d라운드 방어 성공 · 수입 10G" % round_number)
 	for entry in reserves:
@@ -869,16 +1004,48 @@ func _wave_won() -> void:
 			for trap in tile:
 				if trap.active and trap.hits > 0:
 					trap.active = false
-	if round_number == 20:
-		_finish(true)
-		return
-	pending_event = round_number % 2 == 0
-	if round_number % 5 == 0:
+	pending_event = round_number % 2 == 0 and round_number < 20
+	if round_number % 5 == 0 and round_number < 20:
 		_show_rewards()
-	elif pending_event:
-		_show_event()
 	else:
-		_next_round()
+		_show_card_reward()
+
+func _show_card_reward() -> void:
+	phase = "카드 보상"
+	offered_cards.clear()
+	var candidates: Array = ROUND_CARD_POOL.duplicate()
+	for i in range(mini(3, candidates.size())):
+		offered_cards.append(candidates.pop_at(rng.randi_range(0, candidates.size() - 1)))
+	_clear(options_box)
+	var reward_heading := _label("라운드 카드 보상\n3장 중 하나 선택", 16)
+	reward_heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+	reward_heading.custom_minimum_size.x = 150
+	options_box.add_child(reward_heading)
+	for card_name in offered_cards:
+		var data: Dictionary = card_defs[card_name]
+		var reward_button := _button("%s\n코스트 %d\n%s" % [card_name, data.cost, _display_card_description(card_name)], _choose_card_reward.bind(card_name))
+		reward_button.custom_minimum_size = Vector2(130, 105)
+		if card_icons.has(card_name):
+			reward_button.icon = card_icons[card_name]
+			reward_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			reward_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			reward_button.add_theme_constant_override("icon_max_width", 48)
+		options_box.add_child(reward_button)
+	options_box.add_child(_button("카드 받지 않기", _choose_card_reward.bind("")))
+	_log("라운드 보상: 카드 3장 중 1장을 선택하거나 건너뛰세요.")
+	_refresh()
+
+func _choose_card_reward(card_name: String) -> void:
+	if phase != "카드 보상" or (not card_name.is_empty() and not offered_cards.has(card_name)): return
+	if card_name.is_empty(): _log("카드 보상을 건너뛰었습니다.")
+	else:
+		_add_card(card_name)
+		_log("카드 보상: %s 획득 · 버린 더미에 추가" % card_name)
+	offered_cards.clear()
+	_clear(options_box)
+	if round_number == 20: _finish(true)
+	elif pending_event: _show_event()
+	else: _next_round()
 
 func _show_rewards() -> void:
 	phase = "보스 보상"
@@ -913,8 +1080,7 @@ func _choose_reward(reward: String) -> void:
 			_add_card("낙석")
 	_log("보상 선택: " + reward)
 	_clear(options_box)
-	if pending_event: _show_event()
-	else: _next_round()
+	_show_card_reward()
 
 func _heal_all(amount: int) -> void:
 	for lane in lanes:
@@ -1172,6 +1338,11 @@ func _next_round() -> void:
 	_log("%d라운드 준비. 발동한 함정은 골드로 재장전하세요." % round_number)
 
 func _finish(won: bool) -> void:
+	if not won:
+		previous_parties = parties.duplicate(true)
+		previous_round = round_number
+		selected_previous_party = clampi(selected_party, 0, maxi(0, previous_parties.size() - 1))
+		showing_previous = not previous_parties.is_empty()
 	phase = "클리어" if won else "패배"
 	var score: int = played_rounds * 100 + damage_total + gold * 2 + cards_used * 5
 	_log("%s · 점수 %d | 클리어 %d라운드 · 피해 %d · 골드 %d · 사용 카드 %d" % [phase, score, played_rounds, damage_total, gold, cards_used])
