@@ -48,8 +48,8 @@ var moving_soldier: Dictionary = {}
 var selected_order: Dictionary = {}
 var phase := "준비"
 var round_number := 1
-var max_cost := 5
-var cost := 5
+var max_cost := 3
+var cost := 3
 var gold := 30
 var soldier_bonus := 0
 var trap_bonus := 0
@@ -83,6 +83,8 @@ var summary: Label
 var status_label: Label
 var party_box: VBoxContainer
 var enemy_detail_box: VBoxContainer
+var deck_view_box: VBoxContainer
+var showing_deck := false
 var hand_box: HBoxContainer
 var board_box: VBoxContainer
 var reserves_box: VBoxContainer
@@ -215,6 +217,7 @@ func _build_ui() -> void:
 	start_button = _button("웨이브 시작", _start_wave)
 	action_box.add_child(start_button)
 	action_box.add_child(_button("속도 변경", _toggle_speed))
+	action_box.add_child(_button("전체 덱 보기", _toggle_deck_view))
 	music_button = _button("배경음: 켬", _toggle_music)
 	action_box.add_child(music_button)
 	action_box.add_child(_button("새 게임", _new_game))
@@ -233,6 +236,8 @@ func _build_ui() -> void:
 	left_details.add_child(reserves_box)
 	options_box = HBoxContainer.new()
 	left_details.add_child(options_box)
+	deck_view_box = VBoxContainer.new()
+	left_details.add_child(deck_view_box)
 	left_details.add_child(_label("손패 · 각 카드를 누른 뒤 배치할 칸을 누르세요", 19))
 	hand_box = HBoxContainer.new()
 	left_details.add_child(hand_box)
@@ -256,7 +261,7 @@ func _soldier_stats(name_value: String) -> Dictionary:
 	var attack: int = data.attack
 	if madness_relic:
 		var reduced_hp := maxi(1, ceili(hp / 2.0))
-		attack += hp - reduced_hp
+		attack += int((hp - reduced_hp) / 2.0)
 		hp = reduced_hp
 	return {"hp":hp, "attack":attack}
 
@@ -292,8 +297,8 @@ func _new_game() -> void:
 	battle_notice = ""
 	phase = "준비"
 	round_number = 1
-	max_cost = 5
-	cost = 5
+	max_cost = 3
+	cost = 3
 	gold = 30
 	soldier_bonus = 0
 	trap_bonus = 0
@@ -309,6 +314,7 @@ func _new_game() -> void:
 	previous_round = 0
 	selected_previous_party = 0
 	showing_previous = false
+	showing_deck = false
 	offered_cards.clear()
 	mode = "card"
 	rewards_used.clear()
@@ -680,6 +686,7 @@ func _refresh() -> void:
 		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, "위" if party.lane == 0 else "아래", location, " / ".join(descriptions)]
 		party_box.add_child(_button(label_value, _select_party.bind(i)))
 	_refresh_enemy_details()
+	_refresh_deck_view()
 	_clear(board_box)
 	var map_view = preload("res://map_art.gd").new()
 	map_view.game = self
@@ -768,6 +775,34 @@ func _refresh() -> void:
 			card_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 			card_button.add_theme_constant_override("icon_max_width", 88)
 		hand_box.add_child(card_button)
+
+func _toggle_deck_view() -> void:
+	showing_deck = not showing_deck
+	_refresh()
+
+func _refresh_deck_view() -> void:
+	_clear(deck_view_box)
+	deck_view_box.visible = showing_deck
+	if not showing_deck: return
+	deck_view_box.add_child(_label("전체 덱 · 총 %d장 (손패·드로우·버린 더미 포함)" % deck.size(), 16))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 180)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	deck_view_box.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(grid)
+	var counts := {}
+	for card in deck:
+		counts[card.name] = counts.get(card.name, 0) + 1
+	for card_name in counts:
+		var data: Dictionary = card_defs[card_name]
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(245, 75)
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(panel)
+		panel.add_child(_label("%s × %d · 코스트 %d\n%s" % [card_name, counts[card_name], data.cost, _display_card_description(card_name)], 14))
 
 func _refresh_enemy_details() -> void:
 	_clear(enemy_detail_box)
@@ -895,11 +930,13 @@ func _fight(party: Dictionary, slot: int) -> void:
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
 	var fight_token := wave_token
 	_log("%s 경로 방 %d 전투 시작" % ["위" if party.lane == 0 else "아래", slot + 1])
-	# Each cycle: all surviving allies act in order, then surviving enemies act in order.
+	# Snapshot both sides once per cycle; a unit killed before its slot cannot act.
 	while not soldiers.is_empty() and not _live_enemies(party).is_empty():
 		var allies := soldiers.duplicate()
-		for ally in allies:
-			if ally.hp > 0 and not _live_enemies(party).is_empty():
+		var enemies := _live_enemies(party).duplicate()
+		for i in range(maxi(allies.size(), enemies.size())):
+			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
+				var ally: Dictionary = allies[i]
 				var attack: int = _soldier_stats(ally.name).attack + soldier_bonus
 				if card_defs[ally.name].get("area_attack", false):
 					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
@@ -914,10 +951,8 @@ func _fight(party: Dictionary, slot: int) -> void:
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token: return
-			if _live_enemies(party).is_empty(): break
-		var enemies := _live_enemies(party).duplicate()
-		for enemy in enemies:
-			if enemy.hp > 0 and not soldiers.is_empty():
+			if i < enemies.size() and enemies[i].hp > 0 and not soldiers.is_empty():
+				var enemy: Dictionary = enemies[i]
 				if enemy.get("poison", 0) > 0:
 					_damage_enemy(enemy, enemy.poison, "#중독")
 					if enemy.hp <= 0: continue
@@ -1004,6 +1039,9 @@ func _wave_won() -> void:
 			for trap in tile:
 				if trap.active and trap.hits > 0:
 					trap.active = false
+	if round_number == 20:
+		_finish(true)
+		return
 	pending_event = round_number % 2 == 0 and round_number < 20
 	if round_number % 5 == 0 and round_number < 20:
 		_show_rewards()
@@ -1043,8 +1081,7 @@ func _choose_card_reward(card_name: String) -> void:
 		_log("카드 보상: %s 획득 · 버린 더미에 추가" % card_name)
 	offered_cards.clear()
 	_clear(options_box)
-	if round_number == 20: _finish(true)
-	elif pending_event: _show_event()
+	if pending_event: _show_event()
 	else: _next_round()
 
 func _show_rewards() -> void:
@@ -1106,8 +1143,8 @@ func _random_event(eligible: Array):
 	return eligible[rng.randi_range(0, eligible.size() - 1)]
 
 func _start_card_event() -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]: return
-	if deck.is_empty():
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
+	if deck.is_empty() or (current_event == "강화 의식" and _research_candidates().is_empty()):
 		_log("덱에 선택할 카드가 없습니다.")
 		return
 	selected_event_card = -1
@@ -1117,7 +1154,7 @@ func _show_card_event_choices() -> void:
 	_clear(options_box)
 	var panel := VBoxContainer.new()
 	options_box.add_child(panel)
-	panel.add_child(_label("덱에서 카드 한 장을 선택하세요", 16))
+	panel.add_child(_label("강화할 병사 카드를 선택하세요" if current_event == "강화 의식" else "덱에서 카드 한 장을 선택하세요", 16))
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(450, 180)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1126,23 +1163,25 @@ func _show_card_event_choices() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
 	for card in deck:
+		if current_event == "강화 의식" and card_defs[card.name].type != "soldier": continue
 		var label := "%s%s · 코스트 %d\n%s" % ["✓ " if card.id == selected_event_card else "", card.name, card_defs[card.name].cost, _display_card_description(card.name)]
 		list.add_child(_button(label, _select_event_card.bind(card.id)))
 	if selected_event_card >= 0:
-		var action := "선택한 카드 제거" if current_event == "넌 필요없어!!" else "선택한 카드 무작위 변환"
+		var action := "선택한 카드 제거" if current_event == "넌 필요없어!!" else ("선택한 병사 강화" if current_event == "강화 의식" else "선택한 카드 무작위 변환")
 		panel.add_child(_button(action, _finish_card_event))
 	panel.add_child(_button("취소", _cancel_card_event))
 
 func _select_event_card(card_id: int) -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]: return
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
 	if not deck.any(func(card): return card.id == card_id): return
+	if current_event == "강화 의식" and not _research_candidates().any(func(card): return card.id == card_id): return
 	selected_event_card = card_id
 	_show_card_event_choices()
 
 func _cancel_card_event() -> void:
 	selected_event_card = -1
 	_clear(options_box)
-	var action := "카드 한 장 제거" if current_event == "넌 필요없어!!" else "카드 한 장 무작위 변환"
+	var action := "카드 한 장 제거" if current_event == "넌 필요없어!!" else ("병사 한 장 선택해 강화 (0G)" if current_event == "강화 의식" else "카드 한 장 무작위 변환")
 	options_box.add_child(_button(action, _start_card_event))
 	options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 
@@ -1150,12 +1189,14 @@ func _card_transform_candidates(old_name: String) -> Array:
 	return card_defs.keys().filter(func(name_value): return name_value != old_name and card_defs[name_value].type in ["soldier", "trap"])
 
 func _finish_card_event() -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]: return
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
 	var selected: Array = deck.filter(func(card): return card.id == selected_event_card)
 	if selected.size() != 1: return
 	var card: Dictionary = selected[0]
 	var old_name: String = card.name
-	if current_event == "넌 필요없어!!":
+	if current_event == "강화 의식":
+		if not _apply_ritual(card.id): return
+	elif current_event == "넌 필요없어!!":
 		deck.erase(card)
 		hand.erase(card)
 		draw_pile.erase(card)
@@ -1262,12 +1303,13 @@ func _ritual_keyword_candidates(data: Dictionary) -> Array:
 	if not missing.is_empty(): return missing
 	return ["regen", "lifesteal", "poison", "bleed"]
 
-func _apply_ritual() -> bool:
+func _apply_ritual(card_id: int) -> bool:
 	var candidates := _research_candidates()
-	if candidates.is_empty():
+	var selected: Array = candidates.filter(func(card): return card.id == card_id)
+	if selected.size() != 1:
 		_log("덱에 강화할 병사 카드가 없습니다.")
 		return false
-	var card: Dictionary = candidates[rng.randi_range(0, candidates.size() - 1)]
+	var card: Dictionary = selected[0]
 	var old_name: String = card.name
 	var data: Dictionary = card_defs[old_name].duplicate(true)
 	var choices := _ritual_keyword_candidates(data)
@@ -1305,10 +1347,10 @@ func _show_event() -> void:
 	else:
 		match current_event:
 			"가능성 연구": options_box.add_child(_button("병사 카드 2장 합성 (70G)", _start_research))
-			"강화 의식": options_box.add_child(_button("무작위 병사 강화 (0G)", _choose_event.bind("ritual")))
+			"강화 의식": options_box.add_child(_button("병사 한 장 선택해 강화 (0G)", _choose_event.bind("ritual")))
 			"넌 필요없어!!": options_box.add_child(_button("카드 한 장 제거", _start_card_event))
 			"그냥 처음에 보여준거로 해주세요": options_box.add_child(_button("카드 한 장 무작위 변환", _start_card_event))
-			MADNESS_EVENT: options_box.add_child(_button("광기의 집념 획득\n병사 체력 절반 · 줄어든 만큼 공격력 증가", _choose_event.bind("madness")))
+			MADNESS_EVENT: options_box.add_child(_button("광기의 집념 획득\n병사 체력 절반 · 줄어든 체력의 절반만큼 공격력 증가", _choose_event.bind("madness")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	_log("%d라운드 대기 이벤트: %s · 선택지 하나를 고르세요." % [round_number + 1, event_name])
 	_refresh()
@@ -1322,7 +1364,9 @@ func _choose_event(choice: String) -> void:
 	if choice == "noctis" and gold < NOCTIS_PRICE:
 		_log("골드가 부족합니다. 돌아가기를 선택하세요.")
 		return
-	if choice == "ritual" and not _apply_ritual(): return
+	if choice == "ritual":
+		_start_card_event()
+		return
 	match choice:
 		"noctis":
 			gold -= NOCTIS_PRICE

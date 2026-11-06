@@ -32,7 +32,7 @@ func check() -> void:
 	assert(game.hand.size() == 4)
 	game._set_mode("remove")
 	game._slot_pressed(0, 0, game.CARDS[selected.name].type == "soldier")
-	assert(game.hand.size() == 5 and game.cost == 5)
+	assert(game.hand.size() == 5 and game.cost == 3 and game.max_cost == 3)
 	# A spent trap from an earlier round can be removed without an improper refund.
 	game._new_game()
 	if not game.hand.any(func(card): return game.CARDS[card.name].type == "trap"):
@@ -86,7 +86,7 @@ func check() -> void:
 	game._soldier_pressed(0, 0, 1)
 	game._soldier_pressed(0, 0, 0)
 	assert(game.lanes[0].rooms[0][0] == tank and game.lanes[0].rooms[0][1] == backline)
-	assert(game.cost == 5 and tank.hp == 24 and backline.hp == 14)
+	assert(game.cost == 3 and tank.hp == 24 and backline.hp == 14)
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":20, "attack":1}]}, 0)
 	assert(game.log_lines.any(func(line): return line.begins_with("적 → 고블린")))
@@ -107,38 +107,52 @@ func check() -> void:
 	assert(index >= 0)
 	game._select_card(index)
 	game._slot_pressed(0, 0, true)
-	assert(game.cost == 4 and game.hand.size() == 4)
+	assert(game.cost == 2 and game.hand.size() == 4)
 	game._set_mode("remove")
 	game._slot_pressed(0, 0, true)
-	assert(game.cost == 5 and game.hand.size() == 5 and game.lanes[0].rooms[0].is_empty())
+	assert(game.cost == 3 and game.hand.size() == 5 and game.lanes[0].rooms[0].is_empty())
 	assert(game.deck.size() == 10)
 	var enemy_units = []
-	for i in range(2): enemy_units.append({"name":"적%d" % (i + 1), "hp":100, "attack":1})
+	for i in range(2): enemy_units.append({"name":"적%d" % (i + 1), "hp":20, "attack":1})
 	var soldiers = game.lanes[0].rooms[0]
 	for i in range(4): soldiers.append({"name":"고블린", "hp":100, "max_hp":100})
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":enemy_units}, 0)
 	var log: Array = game.log_lines
 	assert(log[1].begins_with("고블린 →"))
-	assert(log[2].begins_with("고블린 →"))
+	assert(log[2].begins_with("적1 →"))
 	assert(log[3].begins_with("고블린 →"))
-	assert(log[4].begins_with("고블린 →"))
-	assert(log[5].begins_with("적1 →"))
-	assert(log[6].begins_with("적2 →"))
+	assert(log[4].begins_with("적2 →"))
+	assert(log[5].begins_with("고블린 →"))
+	assert(log[6].begins_with("고블린 →"))
 	game._new_game()
 	enemy_units = []
-	for i in range(4): enemy_units.append({"name":"적%d" % (i + 1), "hp":100, "attack":1})
+	for i in range(4): enemy_units.append({"name":"적%d" % (i + 1), "hp":20, "attack":1})
 	soldiers = game.lanes[0].rooms[0]
 	for i in range(2): soldiers.append({"name":"고블린", "hp":100, "max_hp":100})
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":enemy_units}, 0)
 	log = game.log_lines
 	assert(log[1].begins_with("고블린 →"))
-	assert(log[2].begins_with("고블린 →"))
-	assert(log[3].begins_with("적1 →"))
+	assert(log[2].begins_with("적1 →"))
+	assert(log[3].begins_with("고블린 →"))
 	assert(log[4].begins_with("적2 →"))
 	assert(log[5].begins_with("적3 →"))
 	assert(log[6].begins_with("적4 →"))
+	game._new_game()
+	game.lanes[0].rooms[0].append({"name":"고블린", "hp":100, "max_hp":100})
+	var four_enemies := []
+	for i in range(4): four_enemies.append({"name":"상대%d" % (i + 1), "hp":20, "attack":1})
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":four_enemies}, 0)
+	assert(game.log_lines[1].begins_with("고블린 →"))
+	for i in range(4): assert(game.log_lines[i + 2].begins_with("상대%d →" % (i + 1)))
+	# A unit killed by an earlier opposing action loses its scheduled turn.
+	game._new_game()
+	game.lanes[0].rooms[0].append_array([{"name":"고블린", "hp":10, "max_hp":10}, {"name":"고블린", "hp":10, "max_hp":10}])
+	game.log_lines.clear()
+	game._fight({"lane":0, "units":[{"name":"범위 적", "hp":100, "attack":99, "area_attack":true}]}, 0)
+	assert(game.log_lines.filter(func(line): return line.begins_with("고블린 →")).size() == 1)
 	# Regular enemy stats and the proposed 5th-round boss formation.
 	game._new_game()
 	assert(game.ENEMY_TYPES["도적"].hp == 10 and game.ENEMY_TYPES["도적"].attack == 8)
@@ -178,7 +192,7 @@ func check() -> void:
 	front = {"name":"고블린", "hp":20, "max_hp":20}
 	rear = {"name":"고블린 궁수", "hp":10, "max_hp":10}
 	game.lanes[0].rooms[0].append_array([front, rear])
-	game._fight({"lane":0, "units":[{"name":"도적", "hp":14, "attack":8, "targeting":"rear"}]}, 0)
+	game._fight({"lane":0, "units":[{"name":"도적", "hp":9, "attack":8, "targeting":"rear"}]}, 0)
 	assert(front.hp == 20 and rear.hp == 2)
 	game._new_game()
 	front = {"name":"고블린", "hp":20, "max_hp":20}
@@ -187,13 +201,13 @@ func check() -> void:
 	game.lanes[0].rooms[0].append_array([front, strong])
 	game._fight({"lane":0, "units":[{"name":"저격수", "hp":10, "attack":15, "targeting":"highest_attack"}]}, 0)
 	assert(front.hp == 20 and strong.hp == 15)
-	# An enemy defeated by the allied phase does not act.
+	# Units defeated before their own slot do not act.
 	game._new_game()
 	game.lanes[0].rooms[0].append_array([{"name":"고블린", "hp":20, "max_hp":20}, {"name":"고블린", "hp":20, "max_hp":20}])
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":6, "attack":99}]}, 0)
-	assert(game.lanes[0].rooms[0].size() == 2)
-	assert(not game.log_lines.any(func(line): return line.begins_with("적 →")))
+	assert(game.lanes[0].rooms[0].size() == 1)
+	assert(game.log_lines.any(func(line): return line.begins_with("적 →")))
 	# The swordsman gains +5 before attacks 2, 4 and 6, retaining the bonus.
 	game._new_game()
 	game.card_defs["시험 병사"] = game.card_defs["고블린"].duplicate(true)
@@ -494,12 +508,13 @@ func check() -> void:
 	game._gain_madness_relic()
 	assert(field_soldier.hp == 7 and field_soldier.max_hp == 7)
 	assert(resting_soldier.hp == 3 and resting_soldier.max_hp == 4)
-	assert(game._soldier_stats("고블린").hp == 7 and game._soldier_stats("고블린").attack == 10)
+	assert(game._soldier_stats("고블린").hp == 7 and game._soldier_stats("고블린").attack == 6)
+	assert(game._soldier_stats("오크").hp == 15 and game._soldier_stats("오크").attack == 12)
 	game._gain_madness_relic()
 	assert(field_soldier.max_hp == 7)
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":16, "attack":0}]}, 0)
-	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 10 피해")))
+	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 6 피해")))
 	game._add_card("고블린")
 	var new_soldier_card: Dictionary = game.deck[-1]
 	game.discard_pile.erase(new_soldier_card)
@@ -508,7 +523,7 @@ func check() -> void:
 	game._slot_pressed(1, 0, true)
 	assert(game.lanes[1].rooms[0][0].max_hp == 7)
 	game.card_defs["고블린"].hp = 15
-	assert(game._soldier_stats("고블린").hp == 8 and game._soldier_stats("고블린").attack == 10)
+	assert(game._soldier_stats("고블린").hp == 8 and game._soldier_stats("고블린").attack == 6)
 	# The boss relic changes maximum cost and the next round's draw.
 	game._new_game()
 	game._discard_hand()
@@ -516,9 +531,9 @@ func check() -> void:
 	game.pending_event = false
 	game._choose_reward(game.COST_DRAW_RELIC)
 	game._choose_card_reward("")
-	assert(game.max_cost == 6 and game.cost == 6 and game.hand.size() == 4)
+	assert(game.max_cost == 4 and game.cost == 4 and game.hand.size() == 4)
 	assert(game.rewards_used.has(game.COST_DRAW_RELIC) and game.draw_penalty == 1)
-	# Ritual upgrades exactly one random deck card without adding #unique.
+	# Ritual upgrades the selected deck card with a random keyword.
 	game._new_game()
 	game._add_card("녹티스")
 	var unique_card: Dictionary = game.deck[-1]
@@ -527,6 +542,9 @@ func check() -> void:
 	game.current_event = "강화 의식"
 	game.gold = 0
 	game._choose_event("ritual")
+	assert(game.selected_event_card == -1 and unique_card.name == "녹티스")
+	game._select_event_card(unique_card.id)
+	game._finish_card_event()
 	assert(game.gold == 0 and game.deck.size() == 1 and unique_card.name != "녹티스")
 	var upgraded: Dictionary = game.card_defs[unique_card.name]
 	assert(upgraded.unique and upgraded.unique_group == "녹티스")
@@ -542,11 +560,12 @@ func check() -> void:
 	var initial_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[0]
 	var other_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[1]
 	game.deck = [initial_card, other_card]
-	assert(game._apply_ritual())
+	assert(game._apply_ritual(initial_card.id))
 	var changed: Array = game.deck.filter(func(card): return card.name != "고블린")
-	assert(changed.size() == 1 and not game.card_defs[changed[0].name].get("unique", false))
+	assert(changed.size() == 1 and changed[0].id == initial_card.id and other_card.name == "고블린")
+	assert(not game.card_defs[changed[0].name].get("unique", false))
 	game.deck.clear()
-	assert(not game._apply_ritual())
+	assert(not game._apply_ritual(initial_card.id))
 	# A missing keyword is selected first; with all five, only one numeric value increases.
 	game._new_game()
 	var complete_data := {"regen":5, "lifesteal":2, "blur":true, "poison":5, "bleed":3}
@@ -554,7 +573,7 @@ func check() -> void:
 	game.card_defs["고블린"].merge(complete_data, true)
 	var complete_card: Dictionary = game.deck.filter(func(card): return card.name == "고블린")[0]
 	game.deck = [complete_card]
-	assert(game._apply_ritual())
+	assert(game._apply_ritual(complete_card.id))
 	var raised: Dictionary = game.card_defs[complete_card.name]
 	var increases := 0
 	for keyword in ["regen", "lifesteal", "poison", "bleed"]:
@@ -571,7 +590,7 @@ func check() -> void:
 	assert(game._single_target_soldier([hidden, visible]) == visible)
 	assert(game._single_target_soldier([hidden]) == hidden)
 	game.lanes[0].rooms[0].append_array([hidden, visible])
-	game._fight({"lane":0, "units":[{"name":"광역 적", "hp":11, "attack":3, "area_attack":true}]}, 0)
+	game._fight({"lane":0, "units":[{"name":"광역 적", "hp":9, "attack":3, "area_attack":true}]}, 0)
 	assert(hidden.hp == 7 and visible.hp == 7)
 	# Poison hits before actions; bleed adds damage without recursively triggering itself.
 	game._new_game()
@@ -709,6 +728,18 @@ func check() -> void:
 	assert(game.showing_previous and game.enemy_detail_box.get_child_count() >= 4)
 	var hp_bar: ProgressBar = game.enemy_detail_box.get_child(3).get_child(1).get_child(1).get_child(0)
 	assert(hp_bar.value == 0 and hp_bar.max_value == 10)
+	# The complete deck viewer includes cards in the hand, draw pile and discard pile during a reward.
+	game._new_game()
+	game._discard_hand()
+	game._show_card_reward()
+	var before_view = game.deck.duplicate(true)
+	game._toggle_deck_view()
+	assert(game.showing_deck and game.deck_view_box.visible and game.deck_view_box.get_child_count() == 2)
+	assert(game.deck_view_box.get_child(0).text.contains("총 10장"))
+	assert(game.hand.size() == 0 and game.draw_pile.size() == 5 and game.discard_pile.size() == 5)
+	assert(game.deck == before_view and game.phase == "카드 보상")
+	game._toggle_deck_view()
+	assert(not game.showing_deck and not game.deck_view_box.visible and game.deck == before_view)
 	# The event after round 18 belongs to round 19; round 20 has no normal event.
 	game._new_game()
 	game.round_number = 18
@@ -736,6 +767,7 @@ func check() -> void:
 			if round_index == 10: assert(game.phase == "이벤트")
 		if game.phase == "이벤트": game._choose_event("leave")
 	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index >= 5 and game.event_index <= 6)
+	assert(game.offered_cards.is_empty() and game.options_box.get_child_count() == 0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
 	print("CHECK PASSED: deck and discard cycling, trap rearming, regeneration, lifesteal, unique units, front locking, rest and 20-round flow")
 	quit()
