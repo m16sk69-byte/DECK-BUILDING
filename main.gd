@@ -32,6 +32,12 @@ const RITUAL_KEYWORDS = {"regen":5, "lifesteal":2, "blur":0, "poison":5, "bleed"
 const KEYWORD_NAMES = {"regen":"재생", "lifesteal":"흡혈", "blur":"흐릿함", "poison":"중독", "bleed":"출혈"}
 const RESEARCH_PRICE := 70
 const REST_HEAL_RATE := 0.30
+const MAP_STAGES = [
+	{"type":"trap", "slot":0}, {"type":"room", "slot":0},
+	{"type":"trap", "slot":1}, {"type":"trap", "slot":2},
+	{"type":"room", "slot":1}, {"type":"trap", "slot":3},
+	{"type":"room", "slot":2}, {"type":"trap", "slot":4},
+]
 var rng := RandomNumberGenerator.new()
 var card_defs: Dictionary = CARDS.duplicate(true)
 var research_selected: Array = []
@@ -43,6 +49,8 @@ var hand: Array = []
 var draw_pile: Array = []
 var discard_pile: Array = []
 var lanes: Array = []
+var map_seed := 0
+var map_crossings: Array = []
 var parties: Array = []
 var reserves: Array = []
 var moving_soldier: Dictionary = {}
@@ -82,6 +90,7 @@ var music_button: Button
 var music_enabled := true
 var summary: Label
 var status_label: Label
+var seed_input: LineEdit
 var party_box: VBoxContainer
 var enemy_detail_box: VBoxContainer
 var deck_view_box: VBoxContainer
@@ -201,6 +210,19 @@ func _build_ui() -> void:
 	root.add_child(summary)
 	status_label = _label("", 16)
 	root.add_child(status_label)
+	var seed_row := HBoxContainer.new()
+	root.add_child(seed_row)
+	var seed_label := _label("맵 시드:", 15)
+	seed_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	seed_label.custom_minimum_size.x = 70
+	seed_row.add_child(seed_label)
+	seed_input = LineEdit.new()
+	seed_input.placeholder_text = "숫자 시드"
+	seed_input.custom_minimum_size = Vector2(160, 36)
+	seed_row.add_child(seed_input)
+	var seed_button := _button("시드로 새 게임", _start_seeded_game)
+	seed_button.custom_minimum_size.x = 145
+	seed_row.add_child(seed_button)
 	root.add_child(_label("적 파티 · 클릭하면 경로를 강조합니다", 19))
 	party_box = VBoxContainer.new()
 	root.add_child(party_box)
@@ -300,7 +322,50 @@ func _shuffle_draw_pile() -> void:
 		draw_pile[i] = draw_pile[j]
 		draw_pile[j] = tmp
 
-func _new_game() -> void:
+func _start_seeded_game() -> void:
+	var value := seed_input.text.strip_edges()
+	if not value.is_valid_int() or value.to_int() < 0:
+		_log("0 이상의 정수 시드를 입력하세요.")
+		return
+	_new_game(value.to_int())
+
+func _generate_map(seed_value: int) -> void:
+	map_seed = seed_value
+	var map_rng := RandomNumberGenerator.new()
+	map_rng.seed = map_seed
+	var lane_count := map_rng.randi_range(2, 3)
+	map_crossings.clear()
+	var available_boundaries := [1, 2, 3, 4, 5]
+	var crossing_count := map_rng.randi_range(2, 3)
+	for i in range(crossing_count):
+		var boundary: int = available_boundaries.pop_at(map_rng.randi_range(0, available_boundaries.size() - 1))
+		map_crossings.append({"after":boundary, "top":map_rng.randi_range(0, lane_count - 2)})
+	map_crossings.sort_custom(func(a, b): return a.after < b.after)
+	lanes.clear()
+	for lane in range(lane_count):
+		lanes.append({"traps":[[], [], [], [], []], "rooms":[[], [], []]})
+
+func _crossing_destination(lane: int, after: int) -> int:
+	for crossing in map_crossings:
+		if crossing.after == after:
+			if lane == crossing.top: return lane + 1
+			if lane == crossing.top + 1: return lane - 1
+	return lane
+
+func _make_party_route(start_lane: int) -> Array:
+	var route: Array = []
+	var current := start_lane
+	for stage in range(MAP_STAGES.size()):
+		route.append(current)
+		var neighbor := _crossing_destination(current, stage)
+		if neighbor != current and rng.randi_range(0, 1) == 1: current = neighbor
+	return route
+
+func _lane_name(index: int) -> String:
+	if lanes.size() == 2: return "위" if index == 0 else "아래"
+	return ["위", "가운데", "아래"][clampi(index, 0, 2)]
+
+func _new_game(seed_value: int = -1) -> void:
 	wave_token += 1
 	battle_notice = ""
 	phase = "준비"
@@ -347,13 +412,12 @@ func _new_game() -> void:
 	for card_name in ["가시", "가시", "가시", "화살", "낙석", "고블린", "고블린", "고블린", "고블린", "고블린 궁수"]:
 		_add_card(card_name, true)
 	_shuffle_draw_pile()
-	lanes = []
-	for lane in range(2):
-		lanes.append({"traps":[[], []], "rooms":[[], []]})
+	_generate_map(int(rng.randi()) if seed_value < 0 else seed_value)
+	if seed_input: seed_input.text = str(map_seed)
 	log_lines.clear()
 	_clear(options_box)
 	_prepare_round()
-	_log("새 게임. 수치는 임시값입니다. 적 경로를 확인하고 방어선을 배치하세요.")
+	_log("새 게임 · 맵 시드 %d. 적 경로를 확인하고 방어선을 배치하세요." % map_seed)
 
 func _draw_hand(amount := 5) -> void:
 	for i in range(amount):
@@ -417,7 +481,8 @@ func _generate_parties() -> void:
 	var desired_count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
 	var count := 1 if round_number == 5 else mini(units.size(), maxi(desired_count, ceili(units.size() / 4.0)))
 	for p in range(count):
-		parties.append({"lane":rng.randi_range(0, 1), "units":[], "pos":-1, "done":false})
+		var initial_lane := rng.randi_range(0, lanes.size() - 1)
+		parties.append({"lane":initial_lane, "start_lane":initial_lane, "route":_make_party_route(initial_lane), "units":[], "pos":-1, "done":false})
 	if round_number == 5:
 		parties[0].units.append_array(units)
 	else:
@@ -720,8 +785,12 @@ func _refresh() -> void:
 		for unit in party.units:
 			var detail: String = " · " + unit.description if unit.has("description") else ""
 			descriptions.append("%s HP%d 공격%d%s" % [unit.name, unit.hp, unit.attack, detail])
-		var location := "처치" if party.done else ("입구 대기" if party.pos < 0 else ("통로 %d" % (int(party.pos / 2) + 1) if party.pos % 2 == 0 else "방 %d" % (int(party.pos / 2) + 1)))
-		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, "위" if party.lane == 0 else "아래", location, " / ".join(descriptions)]
+		var location := "처치" if party.done else "입구 대기"
+		if not party.done and party.pos >= MAP_STAGES.size(): location = "코어 도달"
+		if not party.done and party.pos >= 0 and party.pos < MAP_STAGES.size():
+			var stage: Dictionary = MAP_STAGES[party.pos]
+			location = "%s %d" % ["통로" if stage.type == "trap" else "방", stage.slot + 1]
+		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, _lane_name(party.lane), location, " / ".join(descriptions)]
 		party_box.add_child(_button(label_value, _select_party.bind(i)))
 	_refresh_enemy_details()
 	_refresh_deck_view()
@@ -731,13 +800,14 @@ func _refresh() -> void:
 	map_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_box.add_child(map_view)
 	if mode == "move" or mode == "rest" or mode == "order":
-		for lane in range(2):
-			var unit_row := HBoxContainer.new()
-			board_box.add_child(unit_row)
-			var unit_label := _label("%s 병사 선택:" % ("위" if lane == 0 else "아래"))
-			unit_label.custom_minimum_size.x = 125
-			unit_row.add_child(unit_label)
-			for slot in range(2):
+		for lane in range(lanes.size()):
+			for slot in range(lanes[lane].rooms.size()):
+				if lanes[lane].rooms[slot].is_empty(): continue
+				var unit_row := HBoxContainer.new()
+				board_box.add_child(unit_row)
+				var unit_label := _label("%s 방%d 병사:" % [_lane_name(lane), slot + 1])
+				unit_label.custom_minimum_size.x = 125
+				unit_row.add_child(unit_label)
 				for i in range(lanes[lane].rooms[slot].size()):
 					var soldier: Dictionary = lanes[lane].rooms[slot][i]
 					var picked: bool = mode == "order" and not selected_order.is_empty() and selected_order.lane == lane and selected_order.slot == slot and selected_order.index == i
@@ -745,25 +815,26 @@ func _refresh() -> void:
 					soldier_button.custom_minimum_size.x = 130
 					unit_row.add_child(soldier_button)
 	if mode == "remove":
-		for lane in range(2):
-			var trap_row := HBoxContainer.new()
-			board_box.add_child(trap_row)
-			var trap_label := _label("%s 함정 철거:" % ("위" if lane == 0 else "아래"))
-			trap_label.custom_minimum_size.x = 125
-			trap_row.add_child(trap_label)
-			for slot in range(2):
+		for lane in range(lanes.size()):
+			for slot in range(lanes[lane].traps.size()):
+				if lanes[lane].traps[slot].is_empty(): continue
+				var trap_row := HBoxContainer.new()
+				board_box.add_child(trap_row)
+				var trap_label := _label("%s 통로%d 함정:" % [_lane_name(lane), slot + 1])
+				trap_label.custom_minimum_size.x = 125
+				trap_row.add_child(trap_label)
 				for i in range(lanes[lane].traps[slot].size()):
 					var trap: Dictionary = lanes[lane].traps[slot][i]
 					var state := "이번 배치·환급" if trap.placed_round == round_number else "기존·환급 없음"
 					trap_row.add_child(_button("통로%d %s\n%s" % [slot + 1, trap.name, state], _remove_trap.bind(lane, slot, i)))
 	if mode == "trap_order":
-		for lane in range(2):
-			for slot in range(2):
+		for lane in range(lanes.size()):
+			for slot in range(lanes[lane].traps.size()):
 				var trap_list: Array = lanes[lane].traps[slot]
 				if trap_list.is_empty(): continue
 				var trap_row := HBoxContainer.new()
 				board_box.add_child(trap_row)
-				trap_row.add_child(_label("%s 통로%d:" % ["위" if lane == 0 else "아래", slot + 1], 14))
+				trap_row.add_child(_label("%s 통로%d:" % [_lane_name(lane), slot + 1], 14))
 				for i in range(trap_list.size()):
 					var trap: Dictionary = trap_list[i]
 					var priority := "선두 우선" if card_defs[trap.name].get("targeting", "front") == "front" else "일반"
@@ -862,7 +933,7 @@ func _refresh_enemy_details() -> void:
 		enemy_detail_box.add_child(_label("표시할 적 파티가 없습니다.", 14))
 		return
 	var party: Dictionary = visible_parties[index]
-	var party_title := "%s · 파티 %d · %s 경로" % ["%d라운드 결과" % previous_round if showing_previous else "현재", index + 1, "위" if party.lane == 0 else "아래"]
+	var party_title := "%s · 파티 %d · %s 경로" % ["%d라운드 결과" % previous_round if showing_previous else "현재", index + 1, _lane_name(party.lane)]
 	enemy_detail_box.add_child(_label(party_title, 14))
 	for unit in party.units:
 		var row := HBoxContainer.new()
@@ -969,7 +1040,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 	var soldiers: Array = lanes[party.lane].rooms[slot]
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
 	var fight_token := wave_token
-	_log("%s 경로 방 %d 전투 시작" % ["위" if party.lane == 0 else "아래", slot + 1])
+	_log("%s 경로 방 %d 전투 시작" % [_lane_name(party.lane), slot + 1])
 	# Snapshot both sides once per cycle; a unit killed before its slot cannot act.
 	while not soldiers.is_empty() and not _live_enemies(party).is_empty():
 		var allies := soldiers.duplicate()
@@ -1034,21 +1105,25 @@ func _start_wave() -> void:
 			var party: Dictionary = parties[p]
 			if party.done: continue
 			remaining = true
-			# Same-lane parties queue: only move into an unoccupied segment.
+			# Parties merging onto the same cell queue without overlapping.
 			var next_pos: int = party.pos + 1
+			if next_pos >= MAP_STAGES.size():
+				party.pos = next_pos
+				_finish(false)
+				return
+			var next_lane: int = party.route[next_pos] if party.has("route") else party.lane
 			var occupied := false
-			for j in range(p):
-				if not parties[j].done and parties[j].lane == party.lane and parties[j].pos == next_pos:
+			for j in range(parties.size()):
+				if j != p and not parties[j].done and parties[j].lane == next_lane and parties[j].pos == next_pos:
 					occupied = true
 			if occupied: continue
 			party.pos = next_pos
-			if next_pos >= 4:
-				_finish(false)
-				return
-			_log("파티 %d: %s 경로 %s %d" % [p + 1, "위" if party.lane == 0 else "아래", "통로" if next_pos % 2 == 0 else "방", int(next_pos / 2) + 1])
-			if next_pos % 2 == 0: _apply_traps(party, int(next_pos / 2))
+			party.lane = next_lane
+			var stage: Dictionary = MAP_STAGES[next_pos]
+			_log("파티 %d: %s 경로 %s %d" % [p + 1, _lane_name(next_lane), "통로" if stage.type == "trap" else "방", stage.slot + 1])
+			if stage.type == "trap": _apply_traps(party, stage.slot)
 			else:
-				await _fight(party, int(next_pos / 2))
+				await _fight(party, stage.slot)
 				if my_token != wave_token: return
 			if _live_enemies(party).is_empty():
 				party.done = true

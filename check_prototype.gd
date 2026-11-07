@@ -40,7 +40,7 @@ func check() -> void:
 	var click = InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
-	click.position = Vector2(195 if game.CARDS[selected.name].type == "trap" else 420, 82) * (board.size.x / 1200.0)
+	click.position = Vector2(150 if game.CARDS[selected.name].type == "trap" else 275, board._lane_y(0)) * (board.size.x / 1200.0)
 	board._gui_input(click)
 	assert(game.hand.size() == 4)
 	game._set_mode("remove")
