@@ -10,6 +10,19 @@ func check() -> void:
 	game.record_path = "user://prototype-test-%d.json" % Time.get_ticks_usec()
 	assert(game.hand.size() == 5)
 	assert(game.deck.size() == 10)
+	for starter_name in game.STARTER_ONLY_CARDS:
+		assert(not game.ROUND_CARD_POOL.has(starter_name))
+		assert(not game._card_transform_candidates("오크").has(starter_name))
+		var before_starter_add: int = game.deck.size()
+		game._add_card(starter_name)
+		assert(game.deck.size() == before_starter_add)
+	game.card_defs["강화 고블린 시험"] = game.card_defs["고블린"].duplicate(true)
+	game.card_defs["강화 고블린 시험"]["unique_group"] = "고블린"
+	assert(not game._card_transform_candidates("오크").has("강화 고블린 시험"))
+	game._add_card("강화 고블린 시험")
+	assert(game.deck.size() == 10)
+	game.card_defs.erase("강화 고블린 시험")
+	assert(not game.REWARDS.has("덱에 낙석 2장 추가"))
 	assert(game.gold == 30)
 	assert(game.card_icons.size() == 9 and game.music_player.stream != null)
 	assert(game.CARDS["고블린"].hp == 14 and game.CARDS["고블린"].attack == 3 and game.CARDS["고블린"].cost == 1)
@@ -515,9 +528,9 @@ func check() -> void:
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"적", "hp":16, "attack":0}]}, 0)
 	assert(game.log_lines.any(func(line): return line.begins_with("고블린 → 적 6 피해")))
-	game._add_card("고블린")
+	game._add_card("고블린", true)
 	var new_soldier_card: Dictionary = game.deck[-1]
-	game.discard_pile.erase(new_soldier_card)
+	game.draw_pile.erase(new_soldier_card)
 	game.hand.append(new_soldier_card)
 	game._select_card(game.hand.find(new_soldier_card))
 	game._slot_pressed(1, 0, true)
@@ -715,7 +728,7 @@ func check() -> void:
 	game._new_game()
 	game.parties = [{"lane":0, "pos":1, "done":true, "units":[{"name":"도적", "hp":0, "max_hp":10, "attack":8}]}]
 	game._wave_won()
-	assert(game.phase == "카드 보상" and game.offered_cards.size() == 3 and game.showing_previous)
+	assert(game.phase == "카드 보상" and game.offered_cards == ["오크"] and game.showing_previous)
 	assert(game.offered_cards.duplicate().filter(func(name): return name == game.offered_cards[0]).size() == 1)
 	assert(not game.offered_cards.has("녹티스") and not game.offered_cards.has("언데드 골렘"))
 	var chosen_reward: String = game.offered_cards[0]
@@ -740,6 +753,32 @@ func check() -> void:
 	assert(game.deck == before_view and game.phase == "카드 보상")
 	game._toggle_deck_view()
 	assert(not game.showing_deck and not game.deck_view_box.visible and game.deck == before_view)
+	# A data-defined draw skill resolves before entering discard, so it cannot draw itself.
+	game._new_game()
+	game.card_defs["테스트 드로우"] = {"type":"skill", "cost":1, "draw":2, "description":"카드 2장 드로우"}
+	var skill_card := {"id":8001, "name":"테스트 드로우"}
+	var draw_card := {"id":8002, "name":"오크"}
+	var discard_card := {"id":8003, "name":"언데드 골렘"}
+	game.deck = [skill_card, draw_card, discard_card]
+	game.hand = [skill_card]
+	game.draw_pile = [draw_card]
+	game.discard_pile = [discard_card]
+	game.cost = 3
+	game._select_card(0)
+	assert(game.cost == 2 and game.hand.size() == 2 and game.hand.has(draw_card) and game.hand.has(discard_card))
+	assert(game.discard_pile == [skill_card] and game.draw_pile.is_empty())
+	game.discard_pile.clear()
+	game.hand.append(skill_card)
+	game.cost = 0
+	game._select_card(game.hand.size() - 1)
+	assert(game.hand.has(skill_card) and game.cost == 0 and game.discard_pile.is_empty())
+	# Empty reward pools remain skippable rather than blocking progress.
+	game._new_game()
+	game.card_defs.erase("오크")
+	game._show_card_reward()
+	assert(game.offered_cards.is_empty() and game.phase == "카드 보상")
+	game._choose_card_reward("")
+	assert(game.phase == "준비" and game.round_number == 2)
 	# The event after round 18 belongs to round 19; round 20 has no normal event.
 	game._new_game()
 	game.round_number = 18
@@ -762,7 +801,7 @@ func check() -> void:
 			if round_index == 10: assert(game.pending_event)
 			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
 		if game.phase == "카드 보상":
-			assert(game.offered_cards.size() == 3)
+			assert(game.offered_cards == ["오크"])
 			game._choose_card_reward("")
 			if round_index == 10: assert(game.phase == "이벤트")
 		if game.phase == "이벤트": game._choose_event("leave")

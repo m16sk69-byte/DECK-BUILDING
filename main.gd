@@ -21,8 +21,9 @@ const ENEMY_BUDGETS := [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8
 const TEST_KNIGHT_HP := 24
 const TEST_KNIGHT_ATTACK := 6
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
-const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "덱에 낙석 2장 추가", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
-const ROUND_CARD_POOL = ["고블린", "고블린 궁수", "오크", "가시", "화살", "낙석"]
+const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
+const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
+const ROUND_CARD_POOL = ["오크"]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
@@ -248,7 +249,14 @@ func _build_ui() -> void:
 	log_box.scroll_following = true
 	root.add_child(log_box)
 
+func _starter_only(name_value: String) -> bool:
+	if name_value in STARTER_ONLY_CARDS: return true
+	return card_defs.has(name_value) and card_defs[name_value].get("unique_group", name_value) in STARTER_ONLY_CARDS
+
 func _add_card(name_value: String, initial := false) -> void:
+	if not initial and _starter_only(name_value):
+		_log("%s은(는) 시작 덱 전용 카드입니다." % name_value)
+		return
 	var card := {"id":next_card_id, "name":name_value}
 	deck.append(card)
 	if initial: draw_pile.append(card)
@@ -446,6 +454,9 @@ func _put_soldier(room: Array, soldier: Dictionary) -> void:
 
 func _select_card(index: int) -> void:
 	if phase != "준비" or index < 0 or index >= hand.size(): return
+	if card_defs[hand[index].name].type == "skill":
+		_play_skill(index)
+		return
 	if _unique_in_play(hand[index].name):
 		_log("#고유: %s이(가) 이미 배치 또는 휴식 중입니다." % hand[index].name)
 		return
@@ -453,6 +464,30 @@ func _select_card(index: int) -> void:
 	selected_order.clear()
 	mode = "card"
 	selected_card = index
+	_refresh()
+
+func _play_skill(index: int) -> void:
+	if phase != "준비" or index < 0 or index >= hand.size(): return
+	var card: Dictionary = hand[index]
+	var data: Dictionary = card_defs[card.name]
+	if data.type != "skill": return
+	if data.get("draw", 0) <= 0:
+		_log("%s: 아직 사용할 수 없는 스킬 효과입니다." % card.name)
+		return
+	if cost < data.cost:
+		_log("코스트가 부족합니다.")
+		return
+	moving_soldier.clear()
+	selected_order.clear()
+	selected_card = -1
+	mode = "card"
+	hand.remove_at(index)
+	cost -= data.cost
+	cards_used += 1
+	var hand_before := hand.size()
+	_draw_hand(data.draw)
+	discard_pile.append(card)
+	_log("%s 사용: 카드 %d장 드로우" % [card.name, hand.size() - hand_before])
 	_refresh()
 
 func _select_party(index: int) -> void:
@@ -620,6 +655,9 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			return
 		var card: Dictionary = hand[selected_card]
 		var data: Dictionary = card_defs[card.name]
+		if data.type == "skill":
+			_log("스킬 카드는 손패에서 클릭해 사용하세요.")
+			return
 		if _unique_in_play(card.name):
 			_log("#고유: 같은 병사를 중복 배치할 수 없습니다.")
 			return
@@ -755,7 +793,9 @@ func _refresh() -> void:
 		var card: Dictionary = hand[i]
 		var data: Dictionary = card_defs[card.name]
 		var text_value: String = "%s%s\n비용 %d\n%s" % ["▶" if selected_card == i else "", card.name, data.cost, _display_card_description(card.name)]
-		if data.type == "trap": text_value += "\n" + data.slot
+		if data.type == "trap": text_value += "\n함정 · " + data.slot
+		elif data.type == "soldier": text_value += "\n병사"
+		elif data.type == "skill": text_value += "\n스킬 · 클릭해 사용"
 		var card_button := _button(text_value, _select_card.bind(i))
 		var keyword_help := ""
 		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
@@ -1051,11 +1091,11 @@ func _wave_won() -> void:
 func _show_card_reward() -> void:
 	phase = "카드 보상"
 	offered_cards.clear()
-	var candidates: Array = ROUND_CARD_POOL.duplicate()
+	var candidates: Array = ROUND_CARD_POOL.filter(func(card_name): return card_defs.has(card_name) and not _starter_only(card_name))
 	for i in range(mini(3, candidates.size())):
 		offered_cards.append(candidates.pop_at(rng.randi_range(0, candidates.size() - 1)))
 	_clear(options_box)
-	var reward_heading := _label("라운드 카드 보상\n3장 중 하나 선택", 16)
+	var reward_heading := _label("라운드 카드 보상\n%d장 중 하나 선택" % offered_cards.size() if not offered_cards.is_empty() else "라운드 카드 보상\n선택할 카드 없음", 16)
 	reward_heading.autowrap_mode = TextServer.AUTOWRAP_OFF
 	reward_heading.custom_minimum_size.x = 150
 	options_box.add_child(reward_heading)
@@ -1070,7 +1110,7 @@ func _show_card_reward() -> void:
 			reward_button.add_theme_constant_override("icon_max_width", 48)
 		options_box.add_child(reward_button)
 	options_box.add_child(_button("카드 받지 않기", _choose_card_reward.bind("")))
-	_log("라운드 보상: 카드 3장 중 1장을 선택하거나 건너뛰세요.")
+	_log("라운드 보상: 카드 %d장 중 선택하거나 건너뛰세요." % offered_cards.size())
 	_refresh()
 
 func _choose_card_reward(card_name: String) -> void:
@@ -1112,9 +1152,6 @@ func _choose_reward(reward: String) -> void:
 		"골드 +12": gold += 12
 		"모든 병사 체력 10 회복": _heal_all(10)
 		"언데드 골렘 카드 획득": _add_card("언데드 골렘")
-		"덱에 낙석 2장 추가":
-			_add_card("낙석")
-			_add_card("낙석")
 	_log("보상 선택: " + reward)
 	_clear(options_box)
 	_show_card_reward()
@@ -1186,7 +1223,7 @@ func _cancel_card_event() -> void:
 	options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 
 func _card_transform_candidates(old_name: String) -> Array:
-	return card_defs.keys().filter(func(name_value): return name_value != old_name and card_defs[name_value].type in ["soldier", "trap"])
+	return card_defs.keys().filter(func(name_value): return name_value != old_name and not _starter_only(name_value) and card_defs[name_value].type in ["soldier", "trap", "skill"])
 
 func _finish_card_event() -> void:
 	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
