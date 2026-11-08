@@ -115,7 +115,7 @@ func check() -> void:
 	game.parties = [{"lane":0, "route":[0,0,1,1,1,1,1,1], "units":[{"name":"도적", "hp":6, "max_hp":6, "attack":1}], "pos":-1, "done":false}]
 	game._start_wave()
 	while game.phase == "웨이브": await create_timer(0.01).timeout
-	assert(game.phase == "카드 보상" and target_trap.hits == 1)
+	assert(game.phase == "카드 보상" and target_trap.active and target_trap.hits == 0)
 	assert(game.previous_parties[0].lane == 1 and game.previous_parties[0].units[0].hp == 0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
 	print("CHECK PASSED: seeded maps, orthogonal crossings, paths, placements and merging parties")

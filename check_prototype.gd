@@ -232,30 +232,23 @@ func check() -> void:
 	game._fight({"lane":0, "units":[swordsman]}, 0)
 	assert(swordsman.attack_count == 6 and swordsman.attack == 25 and durable.hp == 895)
 	game._new_game()
-	var trap = {"name":"가시", "card":{"name":"가시", "id":999}, "placed_round":1, "active":false, "hits":3}
+	# Only consumable traps require gold to reload.
+	var trap = {"name":"가시", "card":{"name":"가시", "id":999}, "placed_round":1, "active":true, "hits":0}
+	var paid_trap = {"name":"화살", "placed_round":1, "active":false, "hits":3}
 	game.lanes[0].traps[0].append(trap)
+	game.lanes[0].traps[1].append(paid_trap)
 	game.gold = 14
 	game.cost = 5
 	game._set_mode("rearm")
-	game._slot_pressed(0, 0, false)
-	assert(not trap.active and trap.hits == 3 and game.gold == 14 and game.cost == 5)
+	game._slot_pressed(0, 1, false)
+	assert(not paid_trap.active and paid_trap.hits == 3 and game.gold == 14 and game.cost == 5)
 	game.gold = 15
-	game._slot_pressed(0, 0, false)
-	assert(trap.active and trap.hits == 0 and game.gold == 0 and game.cost == 5)
+	game._slot_pressed(0, 1, false)
+	assert(paid_trap.active and paid_trap.hits == 0 and game.gold == 0 and game.cost == 5)
 	var test_party = {"lane":0, "units":[{"name":"적", "hp":100, "attack":1}]}
 	game._apply_traps(test_party, 0)
 	game._apply_traps(test_party, 0)
-	assert(trap.hits == 2 and test_party.units[0].hp == 88)
-	trap.active = false
-	game.gold = 10
-	game._slot_pressed(0, 0, false)
-	assert(trap.active and game.gold == 0 and game.cost == 5)
-	trap.active = false
-	trap.hits = 1
-	game.gold = 5
-	game._slot_pressed(0, 0, false)
-	assert(trap.active and game.gold == 0 and game.cost == 5)
-	game._apply_traps(test_party, 0)
+	assert(trap.active and trap.hits == 2 and test_party.units[0].hp == 88)
 	var unused_trap = {"name":"가시", "card":{"name":"가시", "id":998}, "placed_round":1, "active":true, "hits":0}
 	var depleted_trap = {"name":"화살", "card":{"name":"화살", "id":997}, "placed_round":1, "active":false, "hits":2}
 	game.lanes[1].traps[0].append(unused_trap)
@@ -266,7 +259,9 @@ func check() -> void:
 	game._wave_won()
 	game._choose_card_reward("")
 	assert(game.round_number == 2 and game.lanes[0].rooms[0][0].hp == 13 and game.deck.size() == before)
-	assert(not trap.active and game.hand.size() == 5)
+	assert(trap.active and trap.hits == 0 and game.hand.size() == 5)
+	game._apply_traps(test_party, 0)
+	assert(trap.active and test_party.units[0].hp == 82)
 	assert(game.gold == 10 and unused_trap.active and unused_trap.hits == 0)
 	assert(not depleted_trap.active and depleted_trap.hits == 2)
 	# Move and rest an actual survivor; resting does not heal until a wave ends.
@@ -279,14 +274,14 @@ func check() -> void:
 	game.lanes[1].rooms[0].clear()
 	game._slot_pressed(1, 1, true)
 	assert(game.lanes[0].rooms[0].is_empty() and game.lanes[1].rooms[1][0] == survivor)
-	assert(game.cost == game.max_cost and survivor.hp == 13 and game.deck.size() == before)
+	assert(game.cost == game.max_cost - 1 and survivor.hp == 13 and game.deck.size() == before)
 	game._set_mode("rest")
 	game._soldier_pressed(1, 1, 0)
 	assert(game.lanes[1].rooms[1].is_empty() and game.reserves.size() == 1 and survivor.hp == 13)
 	# A pending rest can be cancelled without receiving free healing.
 	game._reserve_pressed(0)
 	game._slot_pressed(1, 0, true)
-	assert(game.reserves.is_empty() and survivor.hp == 13)
+	assert(game.reserves.is_empty() and survivor.hp == 13 and game.cost == game.max_cost - 2)
 	game._set_mode("rest")
 	game._soldier_pressed(1, 0, 0)
 	var nearly_full = {"name":"마법사", "hp":13, "max_hp":14, "placed_round":1}
@@ -403,6 +398,55 @@ func check() -> void:
 	game.lanes[0].rooms[0].append(golem)
 	game._prepare_round()
 	assert(golem.hp == 30)
+	# Existing soldiers cost 1 to move; blocked moves never charge.
+	game._new_game()
+	game.round_number = 2
+	game.cost = 0
+	var old_unit = {"name":"고블린", "hp":12, "max_hp":14, "placed_round":1}
+	game.lanes[0].rooms[0].append(old_unit)
+	game._set_mode("move")
+	game._soldier_pressed(0, 0, 0)
+	game._slot_pressed(1, 0, true)
+	assert(game.lanes[0].rooms[0].has(old_unit) and game.lanes[1].rooms[0].is_empty() and game.cost == 0)
+	game.cost = 1
+	game._slot_pressed(1, 0, true)
+	assert(game.lanes[1].rooms[0].has(old_unit) and game.cost == 0 and old_unit.hp == 12)
+	# A rest cancellation cannot bypass the cost of moving to a different room.
+	game._set_mode("rest")
+	game._soldier_pressed(1, 0, 0)
+	game._reserve_pressed(0)
+	game._slot_pressed(0, 0, true)
+	assert(game.reserves.size() == 1 and game.lanes[0].rooms[0].is_empty() and game.cost == 0)
+	game._slot_pressed(1, 0, true)
+	assert(game.reserves.is_empty() and game.lanes[1].rooms[0].has(old_unit) and game.cost == 0)
+	# Newly summoned units still move for free in their placement round.
+	game._new_game()
+	var fresh_unit = {"name":"고블린", "hp":14, "max_hp":14, "placed_round":game.round_number}
+	game.lanes[0].rooms[0].append(fresh_unit)
+	game.cost = 0
+	game._set_mode("move")
+	game._soldier_pressed(0, 0, 0)
+	game._slot_pressed(1, 0, true)
+	assert(game.lanes[1].rooms[0].has(fresh_unit) and game.cost == 0)
+	# Removing an existing front-locked unit leaves its card in the deck and refunds nothing.
+	game._new_game()
+	game.round_number = 2
+	game._add_card("오크")
+	var old_orc_card = game.deck[-1]
+	var old_orc = {"name":"오크", "hp":20, "max_hp":30, "placed_round":1, "card":old_orc_card}
+	var saved_deck = game.deck.duplicate(true)
+	game.lanes[0].rooms[0].append(old_orc)
+	var cost_before_removal: int = game.cost
+	game._set_mode("remove")
+	game._soldier_pressed(0, 0, 0)
+	assert(game.lanes[0].rooms[0].is_empty() and game.deck == saved_deck and game.deck.has(old_orc_card) and game.cost == cost_before_removal)
+	assert(game._front_allowed("오크", game.lanes[0].rooms[0]))
+	game._add_card("녹티스")
+	var noctis_card = game.deck[-1]
+	game.lanes[0].rooms[0].append({"name":"녹티스", "hp":20, "max_hp":20, "placed_round":1, "card":noctis_card})
+	assert(game._unique_in_play("녹티스"))
+	game._soldier_pressed(0, 0, 0)
+	assert(not game._unique_in_play("녹티스") and game.deck.has(noctis_card))
 	# Orcs take the front and cannot be displaced or share a room with another front-only unit.
 	game._new_game()
 	game.cost = 10

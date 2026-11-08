@@ -617,10 +617,13 @@ func _move_trap_order(lane: int, slot: int, index: int, direction: int) -> void:
 	_refresh()
 
 func _soldier_pressed(lane: int, slot: int, index: int) -> void:
-	if phase != "준비" or (mode != "move" and mode != "rest" and mode != "order"): return
+	if phase != "준비" or mode not in ["move", "rest", "order", "remove"]: return
 	var soldiers: Array = lanes[lane].rooms[slot]
 	if index < 0 or index >= soldiers.size(): return
 	var soldier: Dictionary = soldiers[index]
+	if mode == "remove":
+		_remove_soldier(lane, slot, index)
+		return
 	if mode == "order":
 		if selected_order.is_empty() or selected_order.lane != lane or selected_order.slot != slot:
 			selected_order = {"lane":lane, "slot":slot, "index":index}
@@ -644,7 +647,7 @@ func _soldier_pressed(lane: int, slot: int, index: int) -> void:
 			_log("이번 라운드에 새로 배치한 병사는 회수 모드로 취소할 수 있습니다.")
 			return
 		soldiers.remove_at(index)
-		reserves.append({"soldier":soldier, "ready_round":round_number + 1, "healed":false})
+		reserves.append({"soldier":soldier, "ready_round":round_number + 1, "healed":false, "origin_lane":lane, "origin_slot":slot})
 		_log("%s 휴식: 이번 웨이브 종료 후 최대 체력의 30%% 회복" % soldier.name)
 	else:
 		moving_soldier = {"source":"room", "lane":lane, "slot":slot, "index":index}
@@ -660,6 +663,21 @@ func _reserve_pressed(index: int) -> void:
 	selected_card = -1
 	moving_soldier = {"source":"reserve", "index":index}
 	_log("%s 선택: 배치할 방을 클릭하세요." % entry.soldier.name)
+	_refresh()
+
+func _remove_soldier(lane: int, slot: int, index: int) -> void:
+	if phase != "준비" or mode != "remove": return
+	var soldiers: Array = lanes[lane].rooms[slot]
+	if index < 0 or index >= soldiers.size(): return
+	var soldier: Dictionary = soldiers.pop_at(index)
+	if soldier.placed_round == round_number:
+		cost += card_defs[soldier.name].cost
+		discard_pile.erase(soldier.card)
+		hand.append(soldier.card)
+		cards_used -= 1
+		_log("%s 배치 취소: 카드와 코스트 반환" % soldier.name)
+	else:
+		_log("%s 제거: 병사 개체만 사라지고 카드는 덱에 유지됩니다." % soldier.name)
 	_refresh()
 
 func _remove_trap(lane: int, slot: int, index: int) -> void:
@@ -704,11 +722,19 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		if not _front_allowed(soldier.name, placements):
 			_log("선두 고정 병사는 같은 방에 둘 수 없습니다.")
 			return
+		var changed_room := true
+		if moving_soldier.source == "reserve":
+			changed_room = entry.get("origin_lane", lane) != lane or entry.get("origin_slot", slot) != slot
+		var move_cost := 1 if soldier.placed_round < round_number and changed_room else 0
+		if cost < move_cost:
+			_log("이전 라운드 병사를 다른 방으로 옮기려면 코스트 1이 필요합니다.")
+			return
+		cost -= move_cost
 		source.pop_at(moving_soldier.index)
 		if moving_soldier.source == "reserve": soldier.placed_round = round_number - 1
 		_put_soldier(placements, soldier)
 		moving_soldier.clear()
-		_log("%s 무료 이동: 체력 %d/%d" % [soldier.name, soldier.hp, soldier.max_hp])
+		_log("%s 이동: 코스트 %d · 체력 %d/%d" % [soldier.name, move_cost, soldier.hp, soldier.max_hp])
 	elif mode == "rest":
 		_log("방 아래의 병사 버튼을 선택하면 휴식시킬 수 있습니다.")
 	elif mode == "order":
@@ -726,19 +752,15 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 				target_index = i
 				break
 		if target_index < 0:
-			_log("이전 라운드의 병사는 병사 휴식으로 회수하세요.")
+			_log("지도 아래에서 제거할 기존 병사를 직접 선택하세요.")
 			return
-		var target: Dictionary = placements.pop_at(target_index)
-		cost += card_defs[target.name].cost
-		discard_pile.erase(target.card)
-		hand.append(target.card)
-		cards_used -= 1
-		_log("%s 회수: 코스트 반환" % target.name)
+		_remove_soldier(lane, slot, target_index)
+		return
 	elif mode == "rearm":
 		if is_room or placements.is_empty(): return
 		# Rearm the first inactive trap on this tile; repeat for other slots.
 		for trap in placements:
-			if not trap.active:
+			if not trap.active and card_defs[trap.name].get("consumable", false):
 				var price: int = 5 * maxi(1, trap.hits)
 				if gold < price:
 					_log("골드가 부족합니다. 재장전 비용 %dG" % price)
@@ -809,8 +831,8 @@ func _refresh() -> void:
 	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [displayed_round, displayed_phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
 	if madness_relic: summary.text += "   |   유물: 광기의 집념"
 	if draw_penalty > 0: summary.text += "   |   턴 드로우 %d장" % maxi(0, 5 - draw_penalty)
-	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"지도 아래 함정 선택해 철거 · 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
-	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
+	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"아래 병사·함정 선택: 기존 제거 / 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭 · 기존 병사는 코스트 1", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
+	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 소모성 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	start_button.disabled = phase != "준비"
 	_clear(party_box)
 	if phase in ["이벤트", "카드 보상", "보스 보상"]:
@@ -835,7 +857,7 @@ func _refresh() -> void:
 	map_view.game = self
 	map_view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	board_box.add_child(map_view)
-	if mode == "move" or mode == "rest" or mode == "order":
+	if mode in ["move", "rest", "order", "remove"]:
 		for lane in range(lanes.size()):
 			for slot in range(lanes[lane].rooms.size()):
 				if lanes[lane].rooms[slot].is_empty(): continue
@@ -847,7 +869,8 @@ func _refresh() -> void:
 				for i in range(lanes[lane].rooms[slot].size()):
 					var soldier: Dictionary = lanes[lane].rooms[slot][i]
 					var picked: bool = mode == "order" and not selected_order.is_empty() and selected_order.lane == lane and selected_order.slot == slot and selected_order.index == i
-					var soldier_button := _button("%s방%d · %d번\n%s HP%d/%d" % ["▶ " if picked else "", slot + 1, i + 1, soldier.name, soldier.hp, soldier.max_hp], _soldier_pressed.bind(lane, slot, i))
+					var removal_note := ("\n새 배치 취소" if soldier.placed_round == round_number else "\n기존 병사 제거") if mode == "remove" else ""
+					var soldier_button := _button("%s방%d · %d번\n%s HP%d/%d%s" % ["▶ " if picked else "", slot + 1, i + 1, soldier.name, soldier.hp, soldier.max_hp, removal_note], _soldier_pressed.bind(lane, slot, i))
 					soldier_button.custom_minimum_size.x = 130
 					unit_row.add_child(soldier_button)
 	if mode == "remove":
@@ -884,7 +907,7 @@ func _refresh() -> void:
 					later.disabled = i == trap_list.size() - 1
 					trap_row.add_child(later)
 	_clear(reserves_box)
-	reserves_box.add_child(_label("휴식 병사 · 회복 완료 또는 휴식 취소 후 무료 재배치", 16))
+	reserves_box.add_child(_label("휴식 병사 · 같은 방 무료 / 다른 방 코스트 1", 16))
 	var reserve_row := HBoxContainer.new()
 	reserves_box.add_child(reserve_row)
 	if reserves.is_empty():
@@ -1185,8 +1208,9 @@ func _wave_won() -> void:
 	for lane in lanes:
 		for tile in lane.traps:
 			for trap in tile:
-				if trap.active and trap.hits > 0:
-					trap.active = false
+				if not card_defs[trap.name].get("consumable", false):
+					trap.active = true
+					trap.hits = 0
 	if round_number == 20:
 		_finish(true)
 		return
@@ -1523,7 +1547,7 @@ func _choose_event(choice: String) -> void:
 func _next_round() -> void:
 	round_number += 1
 	_prepare_round()
-	_log("%d라운드 준비. 발동한 함정은 골드로 재장전하세요." % round_number)
+	_log("%d라운드 준비. 발동한 #소모성 함정은 골드로 재장전하세요." % round_number)
 
 func _finish(won: bool) -> void:
 	if not won:
