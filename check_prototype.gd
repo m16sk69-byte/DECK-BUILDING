@@ -166,11 +166,12 @@ func check() -> void:
 	game.log_lines.clear()
 	game._fight({"lane":0, "units":[{"name":"범위 적", "hp":100, "attack":99, "area_attack":true}]}, 0)
 	assert(game.log_lines.filter(func(line): return line.begins_with("고블린 →")).size() == 1)
-	# Regular enemy stats and the proposed 5th-round boss formation.
+	# New enemy roster and seeded formations within the shared round budget.
 	game._new_game()
-	assert(game.ENEMY_TYPES["도적"].hp == 10 and game.ENEMY_TYPES["도적"].attack == 8)
-	assert(game.ENEMY_TYPES["방패병"].hp == 20 and game.ENEMY_TYPES["방패병"].attack == 2)
-	assert(game.ENEMY_TYPES["저격수"].hp == 5 and game.ENEMY_TYPES["저격수"].attack == 15)
+	assert(game.ENEMY_TYPES["기사"].hp == 18 and game.ENEMY_TYPES["기사"].attack == 6 and game.ENEMY_TYPES["기사"].enemy_cost == 1)
+	assert(game.ENEMY_TYPES["도적"].hp == 8 and game.ENEMY_TYPES["도적"].attack == 11)
+	assert(game.ENEMY_TYPES["방패병"].hp == 42 and game.ENEMY_TYPES["방패병"].attack == 4)
+	assert(game.ENEMY_TYPES["저격수"].hp == 6 and game.ENEMY_TYPES["저격수"].attack == 12 and game.ENEMY_TYPES["저격수"].enemy_cost == 1)
 	assert(game.ENEMY_BUDGETS == [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8, 20])
 	for test_round in range(1, 21):
 		game.round_number = test_round
@@ -179,17 +180,31 @@ func check() -> void:
 			game._generate_parties()
 			var total_cost := 0
 			assert(game.parties.size() >= 1 and game.parties.size() <= 3)
+			if test_round % 5 == 0: assert(game.parties.size() == 1)
 			for party in game.parties:
 				assert(party.units.size() >= 1 and party.units.size() <= 4)
-				for unit in party.units: total_cost += unit.enemy_cost
-			assert(total_cost == game.ENEMY_BUDGETS[test_round - 1])
+				for unit in party.units:
+					total_cost += unit.enemy_cost
+					if unit.get("requires_party", false): assert(party.units.size() >= 2)
+					if unit.name == "마법사": assert(test_round >= 6)
+				if test_round not in [5, 15] and party.units.size() > 1:
+					var front_hp: int = party.units[0].max_hp
+					for unit in party.units: assert(front_hp >= unit.max_hp)
+					var rear_attack: int = party.units[-1].attack
+					for unit in party.units.slice(1): assert(rear_attack >= unit.attack)
+			assert(total_cost <= game.ENEMY_BUDGETS[test_round - 1])
+			if test_round != 20: assert(total_cost == game.ENEMY_BUDGETS[test_round - 1])
 	game.round_number = 5
 	game._generate_parties()
 	assert(game.parties.size() == 1)
 	var boss_units: Array = game.parties[0].units
-	assert(boss_units.map(func(unit): return unit.name) == ["기사", "기사", "동국의 검사"])
-	assert(boss_units[0].hp == 24 and boss_units[0].attack == 6)
-	assert(boss_units[2].hp == 50 and boss_units[2].attack == 10)
+	assert(boss_units.map(func(unit): return unit.name) == ["기사", "동국의 검사", "저격수"])
+	assert(boss_units[0].hp == 18 and boss_units[0].attack == 6)
+	assert(boss_units[1].hp == 60 and boss_units[1].attack == 10)
+	game.round_number = 15
+	game._generate_parties()
+	assert(game.parties.size() == 1 and game.parties[0].units.size() == 1)
+	assert(game.parties[0].units[0].name == "검신 알론드" and game.parties[0].units[0].hp == 200)
 	# Rear and highest-attack targeting respect blur and deterministic front-order ties.
 	var front := {"name":"고블린", "hp":20}
 	var strong := {"name":"오크", "hp":30}
@@ -222,15 +237,15 @@ func check() -> void:
 	game._fight({"lane":0, "units":[{"name":"적", "hp":6, "attack":99}]}, 0)
 	assert(game.lanes[0].rooms[0].size() == 1)
 	assert(game.log_lines.any(func(line): return line.begins_with("적 →")))
-	# The swordsman gains +5 before attacks 2, 4 and 6, retaining the bonus.
+	# The swordsman gains +5 before attacks 3 and 6, retaining the bonus.
 	game._new_game()
 	game.card_defs["시험 병사"] = game.card_defs["고블린"].duplicate(true)
 	game.card_defs["시험 병사"]["attack"] = 3
 	var durable := {"name":"시험 병사", "hp":1000, "max_hp":1000}
-	var swordsman := {"name":"동국의 검사", "hp":20, "attack":10, "attack_count":0, "attack_boost_interval":2, "attack_boost":5}
+	var swordsman := {"name":"동국의 검사", "hp":20, "attack":10, "attack_count":0, "attack_boost_interval":3, "attack_boost":5}
 	game.lanes[0].rooms[0].append(durable)
 	game._fight({"lane":0, "units":[swordsman]}, 0)
-	assert(swordsman.attack_count == 6 and swordsman.attack == 25 and durable.hp == 895)
+	assert(swordsman.attack_count == 6 and swordsman.attack == 20 and durable.hp == 915)
 	game._new_game()
 	# Only consumable traps require gold to reload.
 	var trap = {"name":"가시", "card":{"name":"가시", "id":999}, "placed_round":1, "active":true, "hits":0}

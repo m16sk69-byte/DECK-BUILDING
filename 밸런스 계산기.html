@@ -72,7 +72,7 @@ button:hover { background:#edf6f0 }
 <div class="field"><label for="bleed">#출혈</label><input id="bleed" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="bleed-hint">수치 1당 2점</small></div>
 <div class="field"><label for="regen">#재생</label><input id="regen" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="regen-hint">수치 1당 0.5점</small></div>
 </div>
-<div class="checks"><label class="check"><input id="blur" type="checkbox"> <span id="blur-hint">#흐릿함 (+5점)</span></label><label class="check"><input id="unique" type="checkbox"> <span id="unique-hint">#고유 (0점)</span></label><label class="check"><input id="front" type="checkbox"> <span id="front-hint">선두 고정 (0점)</span></label></div>
+<div class="checks"><label class="check"><input id="blur" type="checkbox"> <span id="blur-hint">#흐릿함 (+5점)</span></label><label class="check"><input id="unique" type="checkbox"> <span id="unique-hint">#고유 (0점)</span></label><label class="check"><input id="front" type="checkbox"> <span id="front-hint">선두 고정 (0점)</span></label><label class="check"><input id="taunt" type="checkbox"> <span id="taunt-hint">#도발 (+10점)</span></label><label class="check"><input id="sword-boost" type="checkbox"> <span id="sword-boost-hint">검사 공격력 증가 (+10점)</span></label><label class="check"><input id="cleanse" type="checkbox"> <span id="cleanse-hint">알론드 상태 이상 회복 (+20점)</span></label></div>
 </fieldset>
 <fieldset id="trap-fields" hidden><legend>함정 속성</legend><label class="check"><input id="consumable" type="checkbox"> <span id="consumable-hint">#소모성 (-10점)</span></label></fieldset>
 <div class="divider"></div>
@@ -84,7 +84,7 @@ button:hover { background:#edf6f0 }
 <h2 id="result-title">계산 결과</h2>
 <p class="score"><strong id="total">0</strong> 점</p>
 <div id="status" class="badge">기준 내</div>
-<p class="hint" id="limit">코스트 1 × 40점 = 최대 40점</p>
+<p class="hint" id="limit">코스트 1 × 30점 = 최대 30점</p>
 <ul id="breakdown" class="results"></ul>
 <p class="notice" id="result-note"></p>
 </section>
@@ -93,7 +93,7 @@ button:hover { background:#edf6f0 }
 <div class="settings-title"><h2 id="settings-title">능력치·스킬 점수 설정</h2><button type="button" id="reset-settings">점수 기준 초기화</button></div>
 <p class="hint">수치를 바꾸면 위 계산에 즉시 적용됩니다. 점수는 적과 아군이 함께 사용합니다. 감점은 마이너스로 입력하세요.</p>
 <div class="grid settings-grid">
-<div class="field"><label for="weight-enemy">적 코스트 1당 최대점</label><input id="weight-enemy" type="number" min="0" step="any" value="40"></div>
+<div class="field"><label for="weight-enemy">적 코스트 1당 최대점</label><input id="weight-enemy" type="number" min="0" step="any" value="30"></div>
 <div class="field"><label for="weight-ally">아군 코스트 1당 기준점</label><input id="weight-ally" type="number" min="0" step="any" value="20"></div>
 <div class="field"><label for="weight-health">체력 1당 점수</label><input id="weight-health" type="number" step="any" value="1"></div>
 <div class="field"><label for="weight-attack">공격력 1당 점수</label><input id="weight-attack" type="number" step="any" value="2"></div>
@@ -104,6 +104,9 @@ button:hover { background:#edf6f0 }
 <div class="field"><label for="weight-blur">#흐릿함 점수</label><input id="weight-blur" type="number" step="any" value="5"></div>
 <div class="field"><label for="weight-unique">#고유 점수</label><input id="weight-unique" type="number" step="any" value="0"></div>
 <div class="field"><label for="weight-front">선두 고정 점수</label><input id="weight-front" type="number" step="any" value="0"></div>
+<div class="field"><label for="weight-taunt">#도발 점수</label><input id="weight-taunt" type="number" step="any" value="10"></div>
+<div class="field"><label for="weight-sword-boost">검사 공격력 증가 점수</label><input id="weight-sword-boost" type="number" step="any" value="10"></div>
+<div class="field"><label for="weight-cleanse">알론드 상태 이상 회복 점수</label><input id="weight-cleanse" type="number" step="any" value="20"></div>
 <div class="field"><label for="weight-trap-base">함정 단일 피해 1당 점수</label><input id="weight-trap-base" type="number" step="any" value="3"></div>
 <div class="field"><label for="weight-trap-extra">함정 대상 추가당 피해 1의 점수</label><input id="weight-trap-extra" type="number" step="any" value="1"></div>
 <div class="field"><label for="weight-consumable">#소모성 점수</label><input id="weight-consumable" type="number" step="any" value="-10"></div>
@@ -114,9 +117,10 @@ button:hover { background:#edf6f0 }
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const ids = ["kind", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "consumable", "extra"];
-  const defaults = { enemy:40, ally:20, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, "trap-base":3, "trap-extra":1, consumable:-10 };
-  const storageKey = "deck-defense-balance-weights-v1";
+  const ids = ["kind", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "taunt", "sword-boost", "cleanse", "consumable", "extra"];
+  const defaults = { enemy:30, ally:20, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, taunt:10, "sword-boost":10, cleanse:20, "trap-base":3, "trap-extra":1, consumable:-10 };
+  const storageKey = "deck-defense-balance-weights-v2";
+  const oldStorageKey = "deck-defense-balance-weights-v1";
   const weights = { ...defaults };
   const nonnegative = id => Math.max(0, Number($(id).value) || 0);
   const signed = id => Number($(id).value) || 0;
@@ -124,10 +128,16 @@ button:hover { background:#edf6f0 }
   const signedLabel = n => (n > 0 ? "+" : "") + format(n) + "점";
   let storageAvailable = true;
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    const current = localStorage.getItem(storageKey);
+    const saved = JSON.parse(current || localStorage.getItem(oldStorageKey) || "{}");
     for (const key of Object.keys(defaults)) {
       const value = saved[key];
       if (typeof value === "number" && Number.isFinite(value) && (!["enemy","ally"].includes(key) || value >= 0)) weights[key] = value;
+    }
+    if (current === null) {
+      // Update the requested enemy baseline once, preserving other saved settings.
+      weights.enemy = defaults.enemy;
+      localStorage.setItem(storageKey, JSON.stringify(weights));
     }
   } catch (_) { storageAvailable = false; }
   for (const key of Object.keys(defaults)) $("weight-" + key).value = String(weights[key]);
@@ -160,7 +170,7 @@ button:hover { background:#edf6f0 }
     $("trap-fields").hidden = !trap;
     $("attack-label").textContent = trap ? "함정 피해" : "공격력";
     for (const id of ["lifesteal","poison","bleed","regen"]) $(id + "-hint").textContent = "수치 1당 " + format(weights[id]) + "점";
-    for (const [id, label] of [["blur","#흐릿함"],["unique","#고유"],["front","선두 고정"],["consumable","#소모성"]]) {
+    for (const [id, label] of [["blur","#흐릿함"],["unique","#고유"],["front","선두 고정"],["taunt","#도발"],["sword-boost","검사 공격력 증가"],["cleanse","알론드 상태 이상 회복"],["consumable","#소모성"]]) {
       $(id + "-hint").textContent = label + " (" + signedLabel(weights[id]) + ")";
     }
     $("unknown-note").textContent = trap
@@ -184,6 +194,9 @@ button:hover { background:#edf6f0 }
       if ($("blur").checked) rows.push(["#흐릿함", weights.blur]);
       if ($("unique").checked) rows.push(["#고유", weights.unique]);
       if ($("front").checked) rows.push(["선두 고정", weights.front]);
+      if ($("taunt").checked) rows.push(["#도발", weights.taunt]);
+      if ($("sword-boost").checked) rows.push(["검사 공격력 증가", weights["sword-boost"]]);
+      if ($("cleanse").checked) rows.push(["알론드 상태 이상 회복", weights.cleanse]);
     }
     if (signed("extra")) rows.push(["기타 효과", signed("extra")]);
     const total = rows.reduce((sum, row) => sum + row[1], 0);
@@ -243,7 +256,7 @@ button:hover { background:#edf6f0 }
     for (const id of ["health", "attack", "lifesteal", "poison", "bleed", "regen", "extra"]) $(id).value = "0";
     $("cost").value = "1";
     $("targets").value = "1";
-    for (const id of ["blur", "unique", "front", "consumable"]) $(id).checked = false;
+    for (const id of ["blur", "unique", "front", "taunt", "sword-boost", "cleanse", "consumable"]) $(id).checked = false;
     update();
   });
   showStorageStatus();

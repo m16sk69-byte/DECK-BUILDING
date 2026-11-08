@@ -62,9 +62,9 @@ static func _base_kind(kind: String) -> String:
 	if kind == "고블린": return "검사"
 	if kind == "고블린 궁수": return "궁수"
 	if kind == "오크" or kind == "언데드 골렘": return "검사"
-	if kind == "녹티스": return "마법사"
+	if kind == "녹티스" or kind == "회복술사": return "마법사"
 	if kind == "저격수": return "궁수"
-	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스": return "검사"
+	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스" or kind == "검신 알론드": return "검사"
 	return kind if PATTERNS.has(kind) else "검사"
 
 static func make_image(kind: String, enemy := false) -> Image:
@@ -85,7 +85,7 @@ static func make_image(kind: String, enemy := false) -> Image:
 		palette["G"] = Color("d9976f")
 		palette["P"] = Color("d187bd")
 		palette["M"] = Color("c59f9c")
-	if kind == "보스" or kind == "동국의 검사":
+	if kind == "보스" or kind == "동국의 검사" or kind == "검신 알론드":
 		palette["M"] = Color("f3c65e")
 		palette["B"] = Color("a25c92")
 	for y in range(16):

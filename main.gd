@@ -13,13 +13,17 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 }
 const ENEMY_TYPES = {
-	"도적": {"hp":10, "attack":8, "enemy_cost":1, "targeting":"rear", "description":"후열 병사 공격"},
-	"방패병": {"hp":20, "attack":2, "enemy_cost":2, "targeting":"front", "description":"선두 병사 공격"},
-	"저격수": {"hp":5, "attack":15, "enemy_cost":2, "targeting":"highest_attack", "description":"공격력이 가장 높은 병사 공격"},
+	"기사": {"hp":18, "attack":6, "enemy_cost":1, "targeting":"front", "description":"선두 병사 공격"},
+	"저격수": {"hp":6, "attack":12, "enemy_cost":1, "targeting":"highest_attack", "requires_party":true, "description":"공격력이 가장 높은 병사 우선 공격 · 혼자 등장 불가"},
+	"도적": {"hp":8, "attack":11, "enemy_cost":1, "targeting":"rear", "description":"후열 병사 우선 공격"},
+	"방패병": {"hp":42, "attack":4, "enemy_cost":2, "targeting":"front", "taunt":true, "description":"각 방 첫 공격에 도발 · 방 전투 동안 자신에게 단일 공격 유도"},
+	"동국의 검사": {"hp":60, "attack":10, "enemy_cost":3, "targeting":"front", "attack_count":0, "attack_boost_interval":3, "attack_boost":5, "description":"세 번째 공격마다 공격력 +5 후 공격"},
+	"마법사": {"hp":15, "attack":9, "enemy_cost":2, "area_attack":true, "requires_party":true, "min_round":6, "description":"모든 병사 범위 공격 · 6라운드부터 · 혼자 등장 불가"},
+	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "description":"공격 대신 체력이 부족한 아군을 공격력만큼 회복"},
+	"검신 알론드": {"hp":200, "attack":40, "enemy_cost":10, "targeting":"front", "boss_only":true, "cleanse_every":3, "attacks_since_cleanse":0, "description":"3회 공격 후 다음 행동 전, 또는 방의 병사 전멸 시 상태 이상 회복"},
 }
 const ENEMY_BUDGETS := [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8, 20]
-const TEST_KNIGHT_HP := 24
-const TEST_KNIGHT_ATTACK := 6
+const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 15:[["검신 알론드"]]}
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
@@ -124,7 +128,7 @@ func _load_art() -> void:
 	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
-	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "보스"]:
+	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "보스"]:
 		sprite_icons["enemy_" + kind] = pixel_art.make_sprite(kind, true)
 
 func _start_music() -> void:
@@ -487,42 +491,84 @@ func _prepare_round() -> void:
 	showing_previous = false
 	_refresh()
 
+func _make_enemy(role: String) -> Dictionary:
+	var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
+	enemy["name"] = role
+	enemy["max_hp"] = enemy.hp
+	return enemy
+
+func _generate_enemy_group(budget: int, slots: int, stream: RandomNumberGenerator, has_companion := false) -> Array:
+	var units: Array = []
+	var remaining := budget
+	while remaining > 0 and units.size() < slots:
+		var candidates: Array = []
+		var slots_after: int = slots - units.size() - 1
+		for role in ENEMY_TYPES:
+			var data: Dictionary = ENEMY_TYPES[role]
+			if data.get("boss_only", false) or round_number < data.get("min_round", 1): continue
+			var price: int = data.enemy_cost
+			if price > remaining or remaining - price > slots_after * 3: continue
+			if data.get("requires_party", false) and units.is_empty() and not has_companion and remaining - price < 1: continue
+			candidates.append(role)
+		if candidates.is_empty(): break
+		var role: String = candidates[stream.randi_range(0, candidates.size() - 1)]
+		var unit := _make_enemy(role)
+		units.append(unit)
+		remaining -= unit.enemy_cost
+	return units
+
+func _order_enemy_group(units: Array, stream: RandomNumberGenerator) -> Array:
+	# Shuffle first so ties and the middle positions are seeded but varied.
+	var pool := units.duplicate()
+	for i in range(pool.size() - 1, 0, -1):
+		var j := stream.randi_range(0, i)
+		var temp = pool[i]
+		pool[i] = pool[j]
+		pool[j] = temp
+	if pool.size() <= 1: return pool
+	var first := 0
+	for i in range(1, pool.size()):
+		if pool[i].max_hp > pool[first].max_hp: first = i
+	var front: Dictionary = pool.pop_at(first)
+	var last := 0
+	for i in range(1, pool.size()):
+		if pool[i].attack > pool[last].attack: last = i
+	var rear: Dictionary = pool.pop_at(last)
+	return [front] + pool + [rear]
+
+func _append_enemy_party(units: Array, stream: RandomNumberGenerator) -> void:
+	var initial_lane := stream.randi_range(0, lanes.size() - 1)
+	parties.append({"lane":initial_lane, "start_lane":initial_lane, "route":_make_party_route(initial_lane, stream), "units":units, "pos":-1, "done":false})
+
 func _generate_parties() -> void:
 	parties.clear()
 	var encounter_rng := _seeded_rng("enemy", round_number)
-	var remaining: int = ENEMY_BUDGETS[clampi(round_number, 1, 20) - 1]
-	var units: Array = []
-	if round_number == 5:
-		for i in range(2):
-			units.append({"name":"기사", "hp":TEST_KNIGHT_HP, "max_hp":TEST_KNIGHT_HP, "attack":TEST_KNIGHT_ATTACK, "enemy_cost":1, "targeting":"front", "description":"선두 병사 공격 · 수치 시험용"})
-		units.append({"name":"동국의 검사", "hp":50, "max_hp":50, "attack":10, "enemy_cost":3, "targeting":"front", "description":"두 번째 공격마다 공격력 +5 후 공격", "attack_count":0, "attack_boost_interval":2, "attack_boost":5})
-		remaining -= 5
+	var budget: int = ENEMY_BUDGETS[clampi(round_number, 1, 20) - 1]
+	if BOSS_PARTIES.has(round_number):
+		var choices: Array = BOSS_PARTIES[round_number]
+		var names: Array = choices[encounter_rng.randi_range(0, choices.size() - 1)]
+		var boss_units: Array = []
+		for role in names: boss_units.append(_make_enemy(role))
+		_append_enemy_party(boss_units, encounter_rng)
 	elif round_number % 5 == 0:
-		units.append({"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "enemy_cost":4, "description":"임시 보스"})
-		remaining -= 4
-	# Fill the hidden round budget while reserving enough room for cost-2 enemies.
-	while remaining > 0 and units.size() < 12:
-		var eligible: Array = []
-		var slots_after: int = 12 - units.size() - 1
-		for role in ENEMY_TYPES:
-			var unit_cost: int = ENEMY_TYPES[role].enemy_cost
-			if unit_cost <= remaining and remaining - unit_cost <= slots_after * 2: eligible.append(role)
-		if eligible.is_empty(): break
-		var role: String = eligible[encounter_rng.randi_range(0, eligible.size() - 1)]
-		var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
-		enemy["name"] = role
-		enemy["max_hp"] = enemy.hp
-		units.append(enemy)
-		remaining -= enemy.enemy_cost
-	var desired_count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
-	var count := 1 if round_number == 5 else mini(units.size(), maxi(desired_count, ceili(units.size() / 4.0)))
-	for p in range(count):
-		var initial_lane := encounter_rng.randi_range(0, lanes.size() - 1)
-		parties.append({"lane":initial_lane, "start_lane":initial_lane, "route":_make_party_route(initial_lane, encounter_rng), "units":[], "pos":-1, "done":false})
-	if round_number == 5:
-		parties[0].units.append_array(units)
+		# 10/20 boss parties are placeholders until the user defines them.
+		var boss := {"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "enemy_cost":4, "description":"임시 보스"}
+		var units := [boss]
+		units.append_array(_generate_enemy_group(mini(budget - 4, 9), 3, encounter_rng, true))
+		_append_enemy_party(_order_enemy_group(units, encounter_rng), encounter_rng)
 	else:
-		for i in range(units.size()): parties[i % count].units.append(units[i])
+		var remaining := budget
+		while remaining > 0 and parties.size() < 3:
+			var parties_after: int = 2 - parties.size()
+			var minimum := maxi(1, remaining - parties_after * 12)
+			var maximum := mini(remaining, 12)
+			var party_budget := encounter_rng.randi_range(minimum, maximum)
+			var units := _generate_enemy_group(party_budget, 4, encounter_rng)
+			if units.is_empty(): break
+			var spent := 0
+			for unit in units: spent += unit.enemy_cost
+			remaining -= spent
+			_append_enemy_party(_order_enemy_group(units, encounter_rng), encounter_rng)
 	selected_party = 0
 
 func _set_mode(value: String) -> void:
@@ -1091,13 +1137,30 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		else:
 			_damage_enemy(targets.front(), damage, trap.name)
 
+func _clear_enemy_status(enemy: Dictionary) -> void:
+	enemy.erase("poison")
+	enemy.erase("bleed")
+	enemy["attacks_since_cleanse"] = 0
+	_log("%s 상태 이상 회복" % enemy.name)
+
 func _fight(party: Dictionary, slot: int) -> void:
 	var soldiers: Array = lanes[party.lane].rooms[slot]
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
 	var fight_token := wave_token
 	_log("%s 경로 방 %d 전투 시작" % [_lane_name(party.lane), slot + 1])
+	var taunters: Array = []
+	var seen_states := {}
 	# Snapshot both sides once per cycle; a unit killed before its slot cannot act.
 	while not soldiers.is_empty() and not _live_enemies(party).is_empty():
+		var state := JSON.stringify([soldiers, party.units, taunters])
+		if seen_states.has(state):
+			_log("전투 교착: 회복과 공격이 반복되어 전투를 진행할 수 없습니다.")
+			if phase == "웨이브":
+				phase = "교착"
+				battle_notice = "전투 교착 · 새 게임으로 다시 시작"
+				_refresh()
+			return
+		seen_states[state] = true
 		var allies := soldiers.duplicate()
 		var enemies := _live_enemies(party).duplicate()
 		for i in range(maxi(allies.size(), enemies.size())):
@@ -1107,7 +1170,11 @@ func _fight(party: Dictionary, slot: int) -> void:
 				if card_defs[ally.name].get("area_attack", false):
 					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
 				else:
-					_soldier_hit_enemy(_live_enemies(party).front(), attack, ally)
+					var living := _live_enemies(party)
+					var target: Dictionary = living.front()
+					for taunter in taunters:
+						if taunter.hp > 0 and living.has(taunter): target = taunter
+					_soldier_hit_enemy(target, attack, ally)
 				var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
 				if lifesteal > 0:
 					var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
@@ -1119,6 +1186,8 @@ func _fight(party: Dictionary, slot: int) -> void:
 					if fight_token != wave_token: return
 			if i < enemies.size() and enemies[i].hp > 0 and not soldiers.is_empty():
 				var enemy: Dictionary = enemies[i]
+				if enemy.get("cleanse_every", 0) > 0 and enemy.get("attacks_since_cleanse", 0) >= enemy.cleanse_every:
+					_clear_enemy_status(enemy)
 				if enemy.get("poison", 0) > 0:
 					_damage_enemy(enemy, enemy.poison, "#중독")
 					if enemy.hp <= 0: continue
@@ -1128,19 +1197,41 @@ func _fight(party: Dictionary, slot: int) -> void:
 					if enemy.attack_count % interval == 0:
 						enemy.attack += enemy.get("attack_boost", 0)
 						_log("%s 공격력 +%d (공격력 %d)" % [enemy.name, enemy.attack_boost, enemy.attack])
-				var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers, enemy.get("targeting", "front"))]
-				for target in targets:
-					target.hp = maxi(0, target.hp - enemy.attack)
-					battle_notice = "%s → %s · %d 피해" % [enemy.name, target.name, enemy.attack]
-					_log("%s → %s %d 피해 (HP %d)" % [enemy.name, target.name, enemy.attack, target.hp])
-					if target.hp <= 0:
-						soldiers.erase(target)
-						_log("%s 전사" % target.name)
+				if enemy.get("heal", false):
+					var injured: Dictionary = {}
+					for friend in _live_enemies(party):
+						if friend.hp < friend.get("max_hp", friend.hp):
+							injured = friend
+							break
+					if injured.is_empty():
+						_log("%s 치유: 회복할 아군 없음" % enemy.name)
+					else:
+						var restored: int = mini(enemy.attack, injured.max_hp - injured.hp)
+						injured.hp += restored
+						battle_notice = "%s → %s · %d 회복" % [enemy.name, injured.name, restored]
+						_log("%s → %s 체력 %d 회복 (HP %d)" % [enemy.name, injured.name, restored, injured.hp])
+				else:
+					if enemy.get("taunt", false) and not taunters.has(enemy):
+						taunters.append(enemy)
+						_log("%s #도발: 이 방의 병사가 자신을 우선 공격" % enemy.name)
+					if enemy.get("cleanse_every", 0) > 0:
+						enemy["attacks_since_cleanse"] = enemy.get("attacks_since_cleanse", 0) + 1
+					var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers, enemy.get("targeting", "front"))]
+					for target in targets:
+						target.hp = maxi(0, target.hp - enemy.attack)
+						battle_notice = "%s → %s · %d 피해" % [enemy.name, target.name, enemy.attack]
+						_log("%s → %s %d 피해 (HP %d)" % [enemy.name, target.name, enemy.attack, target.hp])
+						if target.hp <= 0:
+							soldiers.erase(target)
+							_log("%s 전사" % target.name)
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token: return
 			if soldiers.is_empty() or _live_enemies(party).is_empty(): break
+	if soldiers.is_empty():
+		for enemy in _live_enemies(party):
+			if enemy.get("cleanse_every", 0) > 0: _clear_enemy_status(enemy)
 
 func _start_wave() -> void:
 	if phase != "준비": return
@@ -1180,7 +1271,7 @@ func _start_wave() -> void:
 			if stage.type == "trap": _apply_traps(party, stage.slot)
 			elif stage.type == "room":
 				await _fight(party, stage.slot)
-				if my_token != wave_token: return
+				if my_token != wave_token or phase != "웨이브": return
 			if _live_enemies(party).is_empty():
 				party.done = true
 				_log("파티 %d 격파" % (p + 1))
