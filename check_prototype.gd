@@ -175,6 +175,7 @@ func check() -> void:
 	for test_round in range(1, 21):
 		game.round_number = test_round
 		for trial in range(20):
+			game._generate_map(1000 + trial)
 			game._generate_parties()
 			var total_cost := 0
 			assert(game.parties.size() >= 1 and game.parties.size() <= 3)

@@ -39,6 +39,7 @@ const MAP_STAGES = [
 	{"type":"room", "slot":2}, {"type":"trap", "slot":4},
 ]
 var rng := RandomNumberGenerator.new()
+var seed_rng := RandomNumberGenerator.new()
 var card_defs: Dictionary = CARDS.duplicate(true)
 var research_selected: Array = []
 var selected_event_card := -1
@@ -106,6 +107,7 @@ var log_lines: Array[String] = []
 
 func _ready() -> void:
 	rng.randomize()
+	seed_rng.randomize()
 	_load_art()
 	_start_music()
 	_build_ui()
@@ -212,9 +214,9 @@ func _build_ui() -> void:
 	root.add_child(status_label)
 	var seed_row := HBoxContainer.new()
 	root.add_child(seed_row)
-	var seed_label := _label("맵 시드:", 15)
+	var seed_label := _label("게임 시드:", 15)
 	seed_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	seed_label.custom_minimum_size.x = 70
+	seed_label.custom_minimum_size.x = 85
 	seed_row.add_child(seed_label)
 	seed_input = LineEdit.new()
 	seed_input.placeholder_text = "숫자 시드"
@@ -352,13 +354,26 @@ func _crossing_destination(lane: int, after: int) -> int:
 			if lane == crossing.top + 1: return lane - 1
 	return lane
 
-func _make_party_route(start_lane: int) -> Array:
+func _seeded_rng(domain: String, round_value: int) -> RandomNumberGenerator:
+	var stream := RandomNumberGenerator.new()
+	stream.seed = ("%d:%s:%d" % [map_seed, domain, round_value]).hash()
+	return stream
+
+func _sample_options(pool: Array, count: int, stream: RandomNumberGenerator) -> Array:
+	var remaining := pool.duplicate()
+	var result: Array = []
+	for i in range(mini(count, remaining.size())):
+		result.append(remaining.pop_at(stream.randi_range(0, remaining.size() - 1)))
+	return result
+
+func _make_party_route(start_lane: int, route_rng: RandomNumberGenerator = null) -> Array:
 	var route: Array = []
 	var current := start_lane
+	var stream: RandomNumberGenerator = route_rng if route_rng else rng
 	for stage in range(MAP_STAGES.size()):
 		route.append(current)
 		var neighbor := _crossing_destination(current, stage)
-		if neighbor != current and rng.randi_range(0, 1) == 1: current = neighbor
+		if neighbor != current and stream.randi_range(0, 1) == 1: current = neighbor
 	return route
 
 func _lane_name(index: int) -> String:
@@ -367,6 +382,8 @@ func _lane_name(index: int) -> String:
 
 func _new_game(seed_value: int = -1) -> void:
 	wave_token += 1
+	map_seed = int(seed_rng.randi()) if seed_value < 0 else seed_value
+	rng.seed = ("%d:game:0" % map_seed).hash()
 	battle_notice = ""
 	phase = "준비"
 	round_number = 1
@@ -412,12 +429,12 @@ func _new_game(seed_value: int = -1) -> void:
 	for card_name in ["가시", "가시", "가시", "화살", "낙석", "고블린", "고블린", "고블린", "고블린", "고블린 궁수"]:
 		_add_card(card_name, true)
 	_shuffle_draw_pile()
-	_generate_map(int(rng.randi()) if seed_value < 0 else seed_value)
+	_generate_map(map_seed)
 	if seed_input: seed_input.text = str(map_seed)
 	log_lines.clear()
 	_clear(options_box)
 	_prepare_round()
-	_log("새 게임 · 맵 시드 %d. 적 경로를 확인하고 방어선을 배치하세요." % map_seed)
+	_log("새 게임 · 게임 시드 %d. 적 경로를 확인하고 방어선을 배치하세요." % map_seed)
 
 func _draw_hand(amount := 5) -> void:
 	for i in range(amount):
@@ -454,6 +471,7 @@ func _prepare_round() -> void:
 
 func _generate_parties() -> void:
 	parties.clear()
+	var encounter_rng := _seeded_rng("enemy", round_number)
 	var remaining: int = ENEMY_BUDGETS[clampi(round_number, 1, 20) - 1]
 	var units: Array = []
 	if round_number == 5:
@@ -472,7 +490,7 @@ func _generate_parties() -> void:
 			var unit_cost: int = ENEMY_TYPES[role].enemy_cost
 			if unit_cost <= remaining and remaining - unit_cost <= slots_after * 2: eligible.append(role)
 		if eligible.is_empty(): break
-		var role: String = eligible[rng.randi_range(0, eligible.size() - 1)]
+		var role: String = eligible[encounter_rng.randi_range(0, eligible.size() - 1)]
 		var enemy: Dictionary = ENEMY_TYPES[role].duplicate(true)
 		enemy["name"] = role
 		enemy["max_hp"] = enemy.hp
@@ -481,8 +499,8 @@ func _generate_parties() -> void:
 	var desired_count := 1 if round_number < 3 else (2 if round_number < 11 else 3)
 	var count := 1 if round_number == 5 else mini(units.size(), maxi(desired_count, ceili(units.size() / 4.0)))
 	for p in range(count):
-		var initial_lane := rng.randi_range(0, lanes.size() - 1)
-		parties.append({"lane":initial_lane, "start_lane":initial_lane, "route":_make_party_route(initial_lane), "units":[], "pos":-1, "done":false})
+		var initial_lane := encounter_rng.randi_range(0, lanes.size() - 1)
+		parties.append({"lane":initial_lane, "start_lane":initial_lane, "route":_make_party_route(initial_lane, encounter_rng), "units":[], "pos":-1, "done":false})
 	if round_number == 5:
 		parties[0].units.append_array(units)
 	else:
@@ -1167,8 +1185,7 @@ func _show_card_reward() -> void:
 	phase = "카드 보상"
 	offered_cards.clear()
 	var candidates: Array = ROUND_CARD_POOL.filter(func(card_name): return card_defs.has(card_name) and not _starter_only(card_name))
-	for i in range(mini(3, candidates.size())):
-		offered_cards.append(candidates.pop_at(rng.randi_range(0, candidates.size() - 1)))
+	offered_cards = _sample_options(candidates, 3, _seeded_rng("card_reward", round_number))
 	_clear(options_box)
 	var reward_heading := _label("라운드 카드 보상\n%d장 중 하나 선택" % offered_cards.size() if not offered_cards.is_empty() else "라운드 카드 보상\n선택할 카드 없음", 16)
 	reward_heading.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -1205,9 +1222,8 @@ func _show_rewards() -> void:
 	var choices := []
 	for reward in REWARDS:
 		if not rewards_used.has(reward): choices.append(reward)
-	for i in range(mini(3, choices.size())):
-		var index := rng.randi_range(0, choices.size() - 1)
-		var reward: String = choices.pop_at(index)
+	var selected_rewards := _sample_options(choices, 3, _seeded_rng("boss_reward", round_number))
+	for reward in selected_rewards:
 		options_box.add_child(_button(reward, _choose_reward.bind(reward)))
 	_log("보스 격파! 보상 하나를 선택하세요.")
 	_refresh()
@@ -1250,9 +1266,10 @@ func _eligible_events(event_round: int) -> Array:
 		eligible.append(MADNESS_EVENT)
 	return eligible
 
-func _random_event(eligible: Array):
+func _random_event(eligible: Array, event_rng: RandomNumberGenerator = null):
 	if eligible.is_empty(): return null
-	return eligible[rng.randi_range(0, eligible.size() - 1)]
+	var stream: RandomNumberGenerator = event_rng if event_rng else rng
+	return eligible[stream.randi_range(0, eligible.size() - 1)]
 
 func _start_card_event() -> void:
 	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
@@ -1448,7 +1465,7 @@ func _show_event() -> void:
 		_next_round()
 		return
 	phase = "이벤트"
-	var event_name: String = _random_event(eligible)
+	var event_name: String = _random_event(eligible, _seeded_rng("event", round_number + 1))
 	seen_events.append(event_name)
 	current_event = event_name
 	event_index += 1
