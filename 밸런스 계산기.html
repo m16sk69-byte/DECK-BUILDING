@@ -41,6 +41,11 @@ legend { font-size:16px; margin-bottom:10px }
 button { cursor:pointer; color:#315c46; background:#fff; border:1px solid #a7beb0; border-radius:9px; font:inherit; font-weight:700; padding:9px 16px }
 button:hover { background:#edf6f0 }
 .actions { margin-top:22px }
+.settings { margin-top:18px }
+.settings-grid { grid-template-columns:repeat(3,minmax(0,1fr)) }
+.settings-title { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline; justify-content:space-between }
+@media (max-width:740px) { .settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media (max-width:400px) { .settings-grid { grid-template-columns:1fr } }
 [hidden] { display:none !important }
 @media (max-width:740px) { main { padding-top:22px } .layout { grid-template-columns:1fr } .panel { padding:19px } }
 @media (max-width:400px) { .grid { grid-template-columns:1fr } .field.full { grid-column:auto } }
@@ -48,7 +53,7 @@ button:hover { background:#edf6f0 }
 </head>
 <body>
 <main>
-<header><p class="eyebrow">DECKBUILDING DEFENSE</p><h1>밸런스 계산기</h1><p class="intro">능력치를 입력하면 점수와 코스트 기준을 바로 확인할 수 있습니다.</p></header>
+<header><p class="eyebrow">DECKBUILDING DEFENSE</p><h1>밸런스 계산기</h1><p class="intro">능력치를 입력하면 점수와 코스트 기준을 바로 확인할 수 있습니다. <a href="#score-settings">점수 기준 수정하기 ↓</a></p></header>
 <div class="layout">
 <section class="panel" aria-labelledby="input-title">
 <h2 id="input-title">능력치 입력</h2>
@@ -62,14 +67,14 @@ button:hover { background:#edf6f0 }
 <fieldset id="keyword-fields">
 <legend>키워드 수치</legend>
 <div class="grid">
-<div class="field"><label for="lifesteal">#흡혈</label><input id="lifesteal" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 2점</small></div>
-<div class="field"><label for="poison">#중독</label><input id="poison" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 1점</small></div>
-<div class="field"><label for="bleed">#출혈</label><input id="bleed" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 2점</small></div>
-<div class="field"><label for="regen">#재생</label><input id="regen" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 0.5점</small></div>
+<div class="field"><label for="lifesteal">#흡혈</label><input id="lifesteal" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="lifesteal-hint">수치 1당 2점</small></div>
+<div class="field"><label for="poison">#중독</label><input id="poison" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="poison-hint">수치 1당 1점</small></div>
+<div class="field"><label for="bleed">#출혈</label><input id="bleed" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="bleed-hint">수치 1당 2점</small></div>
+<div class="field"><label for="regen">#재생</label><input id="regen" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="regen-hint">수치 1당 0.5점</small></div>
 </div>
-<div class="checks"><label class="check"><input id="blur" type="checkbox"> #흐릿함 (+5점)</label><label class="check"><input id="unique" type="checkbox"> #고유 (0점)</label><label class="check"><input id="front" type="checkbox"> 선두 고정 (0점)</label></div>
+<div class="checks"><label class="check"><input id="blur" type="checkbox"> <span id="blur-hint">#흐릿함 (+5점)</span></label><label class="check"><input id="unique" type="checkbox"> <span id="unique-hint">#고유 (0점)</span></label><label class="check"><input id="front" type="checkbox"> <span id="front-hint">선두 고정 (0점)</span></label></div>
 </fieldset>
-<fieldset id="trap-fields" hidden><legend>함정 속성</legend><label class="check"><input id="consumable" type="checkbox"> #소모성 (총점에서 10점 차감)</label></fieldset>
+<fieldset id="trap-fields" hidden><legend>함정 속성</legend><label class="check"><input id="consumable" type="checkbox"> <span id="consumable-hint">#소모성 (-10점)</span></label></fieldset>
 <div class="divider"></div>
 <div class="field"><label for="extra">기타 효과 점수</label><input id="extra" type="number" step="0.5" value="0" inputmode="decimal"><small>정해진 점수가 있는 추가 효과를 직접 더하거나 빼세요. 예: +3, -2.5</small></div>
 <p class="notice" id="unknown-note">후열 공격, 저격처럼 점수가 아직 정해지지 않은 능력은 자동으로 계산되지 않습니다. 위 점수가 그 능력을 반영한 것은 아닙니다.</p>
@@ -79,25 +84,69 @@ button:hover { background:#edf6f0 }
 <h2 id="result-title">계산 결과</h2>
 <p class="score"><strong id="total">0</strong> 점</p>
 <div id="status" class="badge">기준 내</div>
-<p class="hint" id="limit">코스트 1 × 30점 = 최대 30점</p>
+<p class="hint" id="limit">코스트 1 × 40점 = 최대 40점</p>
 <ul id="breakdown" class="results"></ul>
 <p class="notice" id="result-note"></p>
 </section>
 </div>
+<section class="panel settings" id="score-settings" aria-labelledby="settings-title">
+<div class="settings-title"><h2 id="settings-title">능력치·스킬 점수 설정</h2><button type="button" id="reset-settings">점수 기준 초기화</button></div>
+<p class="hint">수치를 바꾸면 위 계산에 즉시 적용됩니다. 점수는 적과 아군이 함께 사용합니다. 감점은 마이너스로 입력하세요.</p>
+<div class="grid settings-grid">
+<div class="field"><label for="weight-enemy">적 코스트 1당 최대점</label><input id="weight-enemy" type="number" min="0" step="any" value="40"></div>
+<div class="field"><label for="weight-ally">아군 코스트 1당 기준점</label><input id="weight-ally" type="number" min="0" step="any" value="20"></div>
+<div class="field"><label for="weight-health">체력 1당 점수</label><input id="weight-health" type="number" step="any" value="1"></div>
+<div class="field"><label for="weight-attack">공격력 1당 점수</label><input id="weight-attack" type="number" step="any" value="2"></div>
+<div class="field"><label for="weight-lifesteal">#흡혈 1당 점수</label><input id="weight-lifesteal" type="number" step="any" value="2"></div>
+<div class="field"><label for="weight-poison">#중독 1당 점수</label><input id="weight-poison" type="number" step="any" value="1"></div>
+<div class="field"><label for="weight-bleed">#출혈 1당 점수</label><input id="weight-bleed" type="number" step="any" value="2"></div>
+<div class="field"><label for="weight-regen">#재생 1당 점수</label><input id="weight-regen" type="number" step="any" value="0.5"></div>
+<div class="field"><label for="weight-blur">#흐릿함 점수</label><input id="weight-blur" type="number" step="any" value="5"></div>
+<div class="field"><label for="weight-unique">#고유 점수</label><input id="weight-unique" type="number" step="any" value="0"></div>
+<div class="field"><label for="weight-front">선두 고정 점수</label><input id="weight-front" type="number" step="any" value="0"></div>
+<div class="field"><label for="weight-trap-base">함정 단일 피해 1당 점수</label><input id="weight-trap-base" type="number" step="any" value="3"></div>
+<div class="field"><label for="weight-trap-extra">함정 대상 추가당 피해 1의 점수</label><input id="weight-trap-extra" type="number" step="any" value="1"></div>
+<div class="field"><label for="weight-consumable">#소모성 점수</label><input id="weight-consumable" type="number" step="any" value="-10"></div>
+</div>
+<p class="notice" id="settings-status" role="status">설정이 이 브라우저에 자동 저장됩니다.</p>
+</section>
 </main>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const ids = ["kind", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "consumable", "extra"];
+  const defaults = { enemy:40, ally:20, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, "trap-base":3, "trap-extra":1, consumable:-10 };
+  const storageKey = "deck-defense-balance-weights-v1";
+  const weights = { ...defaults };
   const nonnegative = id => Math.max(0, Number($(id).value) || 0);
   const signed = id => Number($(id).value) || 0;
-  const format = n => Number(n.toFixed(2)).toLocaleString("ko-KR");
+  const format = n => Number(n.toFixed(6)).toLocaleString("ko-KR", { maximumFractionDigits:6 });
+  const signedLabel = n => (n > 0 ? "+" : "") + format(n) + "점";
+  let storageAvailable = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+    for (const key of Object.keys(defaults)) {
+      const value = saved[key];
+      if (typeof value === "number" && Number.isFinite(value) && (!["enemy","ally"].includes(key) || value >= 0)) weights[key] = value;
+    }
+  } catch (_) { storageAvailable = false; }
+  for (const key of Object.keys(defaults)) $("weight-" + key).value = String(weights[key]);
+  function showStorageStatus() {
+    $("settings-status").textContent = storageAvailable
+      ? "점수 기준이 이 브라우저에 자동 저장됩니다. 다른 브라우저에서는 별도로 설정해야 합니다."
+      : "이 브라우저에서는 자동 저장을 사용할 수 없습니다. 창을 닫으면 점수 설정이 초기화될 수 있습니다.";
+  }
+  function saveSettings() {
+    try { localStorage.setItem(storageKey, JSON.stringify(weights)); storageAvailable = true; }
+    catch (_) { storageAvailable = false; }
+    showStorageStatus();
+  }
   const addRow = (label, points) => {
     const li = document.createElement("li");
     const name = document.createElement("span");
     const value = document.createElement("span");
     name.textContent = label;
-    value.textContent = (points > 0 ? "+" : "") + format(points) + "점";
+    value.textContent = signedLabel(points);
     li.append(name, value);
     $("breakdown").append(li);
   };
@@ -110,6 +159,10 @@ button:hover { background:#edf6f0 }
     $("keyword-fields").hidden = trap;
     $("trap-fields").hidden = !trap;
     $("attack-label").textContent = trap ? "함정 피해" : "공격력";
+    for (const id of ["lifesteal","poison","bleed","regen"]) $(id + "-hint").textContent = "수치 1당 " + format(weights[id]) + "점";
+    for (const [id, label] of [["blur","#흐릿함"],["unique","#고유"],["front","선두 고정"],["consumable","#소모성"]]) {
+      $(id + "-hint").textContent = label + " (" + signedLabel(weights[id]) + ")";
+    }
     $("unknown-note").textContent = trap
       ? "피해 이외의 함정 효과는 점수가 정해진 경우에만 기타 효과 점수에 직접 입력하세요."
       : "후열 공격, 저격처럼 점수가 아직 정해지지 않은 능력은 자동으로 계산되지 않습니다. 위 점수가 그 능력을 반영한 것은 아닙니다.";
@@ -117,18 +170,20 @@ button:hover { background:#edf6f0 }
     const rows = [];
     if (trap) {
       const targets = nonnegative("targets");
-      rows.push(["피해 " + format(attack) + " × 대상 기준 " + format(targets + 2), attack * (targets + 2)]);
-      if ($("consumable").checked) rows.push(["#소모성", -10]);
+      const multiplier = weights["trap-base"] + (targets - 1) * weights["trap-extra"];
+      rows.push(["피해 " + format(attack) + " × 대상 기준 " + format(multiplier), attack * multiplier]);
+      if ($("consumable").checked) rows.push(["#소모성", weights.consumable]);
     } else {
-      rows.push(["체력 " + format(nonnegative("health")) + " × 1", nonnegative("health")]);
-      rows.push(["공격력 " + format(attack) + " × 2", attack * 2]);
-      for (const [id, label, multiplier] of [["lifesteal","흡혈",2],["poison","중독",1],["bleed","출혈",2],["regen","재생",0.5]]) {
+      const health = nonnegative("health");
+      rows.push(["체력 " + format(health) + " × " + format(weights.health), health * weights.health]);
+      rows.push(["공격력 " + format(attack) + " × " + format(weights.attack), attack * weights.attack]);
+      for (const [id, label] of [["lifesteal","흡혈"],["poison","중독"],["bleed","출혈"],["regen","재생"]]) {
         const value = nonnegative(id);
-        if (value) rows.push(["#" + label + " " + format(value) + " × " + format(multiplier), value * multiplier]);
+        if (value) rows.push(["#" + label + " " + format(value) + " × " + format(weights[id]), value * weights[id]]);
       }
-      if ($("blur").checked) rows.push(["#흐릿함", 5]);
-      if ($("unique").checked) rows.push(["#고유", 0]);
-      if ($("front").checked) rows.push(["선두 고정", 0]);
+      if ($("blur").checked) rows.push(["#흐릿함", weights.blur]);
+      if ($("unique").checked) rows.push(["#고유", weights.unique]);
+      if ($("front").checked) rows.push(["선두 고정", weights.front]);
     }
     if (signed("extra")) rows.push(["기타 효과", signed("extra")]);
     const total = rows.reduce((sum, row) => sum + row[1], 0);
@@ -142,19 +197,48 @@ button:hover { background:#edf6f0 }
       $("limit").textContent = "함정의 코스트당 기준은 아직 정해지지 않았습니다.";
       $("result-note").textContent = "전체 공격은 실제 적의 수와 관계없이 4명 기준으로 계산합니다. 대상 수 점수는 시험용입니다.";
     } else {
-      const rate = kind === "enemy" ? 30 : 20;
+      const rate = weights[kind];
       const cost = nonnegative("cost");
       const maximum = cost * rate;
       const difference = maximum - total;
-      status.className = "badge" + (difference < 0 ? " over" : "");
-      status.textContent = difference < 0 ? "기준 초과 " + format(-difference) + "점" : difference > 0 ? "남은 점수 " + format(difference) + "점" : "기준과 동일";
-      $("limit").textContent = "코스트 " + format(cost) + " × " + rate + "점 = " + (kind === "enemy" ? "최대 " : "기준 ") + format(maximum) + "점";
+      const roundedDifference = Math.abs(difference) < 1e-9 ? 0 : difference;
+      status.className = "badge" + (roundedDifference < 0 ? " over" : "");
+      status.textContent = roundedDifference < 0 ? "기준 초과 " + format(-roundedDifference) + "점" : roundedDifference > 0 ? "남은 점수 " + format(roundedDifference) + "점" : "기준과 동일";
+      $("limit").textContent = "코스트 " + format(cost) + " × " + format(rate) + "점 = " + (kind === "enemy" ? "최대 " : "기준 ") + format(maximum) + "점";
       $("result-note").textContent = kind === "ally"
         ? "일반 병사용 시험 기준입니다. 이벤트나 보스 보상으로 얻는 병사는 이 기준에서 제외됩니다."
-        : "일반 병사와 같은 능력치·키워드 배점이며, 적의 코스트 1당 최대 점수는 30점입니다.";
+        : "적은 선택한 코스트당 최대 점수를 사용합니다. 능력치·키워드 배점은 아군과 공통입니다.";
     }
   }
   ids.forEach(id => { $(id).addEventListener("input", update); $(id).addEventListener("change", update); });
+  for (const key of Object.keys(defaults)) {
+    const field = $("weight-" + key);
+    const changeWeight = () => {
+      const raw = field.value.trim();
+      const value = Number(raw);
+      if (!raw || !Number.isFinite(value) || (["enemy","ally"].includes(key) && value < 0)) {
+        field.setAttribute("aria-invalid", "true");
+        $("settings-status").textContent = "올바른 점수를 입력하세요. 비어 있거나 잘못된 값은 직전 기준으로 계산합니다.";
+        return;
+      }
+      field.removeAttribute("aria-invalid");
+      weights[key] = value;
+      saveSettings();
+      update();
+    };
+    field.addEventListener("input", changeWeight);
+    field.addEventListener("change", changeWeight);
+  }
+  $("reset-settings").addEventListener("click", () => {
+    Object.assign(weights, defaults);
+    for (const key of Object.keys(defaults)) {
+      const field = $("weight-" + key);
+      field.value = String(weights[key]);
+      field.removeAttribute("aria-invalid");
+    }
+    saveSettings();
+    update();
+  });
   $("reset").addEventListener("click", () => {
     for (const id of ["health", "attack", "lifesteal", "poison", "bleed", "regen", "extra"]) $(id).value = "0";
     $("cost").value = "1";
@@ -162,6 +246,7 @@ button:hover { background:#edf6f0 }
     for (const id of ["blur", "unique", "front", "consumable"]) $(id).checked = false;
     update();
   });
+  showStorageStatus();
   update();
 })();
 </script>
