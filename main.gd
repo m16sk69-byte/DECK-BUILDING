@@ -443,7 +443,7 @@ func _new_game(seed_value: int = -1) -> void:
 	moving_soldier.clear()
 	selected_order.clear()
 	next_card_id = 0
-	for card_name in ["가시", "가시", "가시", "화살", "낙석", "고블린", "고블린", "고블린", "고블린", "고블린 궁수"]:
+	for card_name in ["가시", "화살", "낙석", "고블린", "고블린", "고블린", "고블린 궁수", "고블린 궁수"]:
 		_add_card(card_name, true)
 	_shuffle_draw_pile()
 	_generate_map(map_seed)

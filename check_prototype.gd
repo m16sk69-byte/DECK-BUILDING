@@ -9,7 +9,7 @@ func check() -> void:
 	await process_frame
 	game.record_path = "user://prototype-test-%d.json" % Time.get_ticks_usec()
 	assert(game.hand.size() == 5)
-	assert(game.deck.size() == 10)
+	assert(game.deck.size() == 8)
 	for starter_name in game.STARTER_ONLY_CARDS:
 		assert(not game.ROUND_CARD_POOL.has(starter_name))
 		assert(not game._card_transform_candidates("오크").has(starter_name))
@@ -20,7 +20,7 @@ func check() -> void:
 	game.card_defs["강화 고블린 시험"]["unique_group"] = "고블린"
 	assert(not game._card_transform_candidates("오크").has("강화 고블린 시험"))
 	game._add_card("강화 고블린 시험")
-	assert(game.deck.size() == 10)
+	assert(game.deck.size() == 8)
 	game.card_defs.erase("강화 고블린 시험")
 	assert(not game.REWARDS.has("덱에 낙석 2장 추가"))
 	assert(game.gold == 30)
@@ -124,7 +124,7 @@ func check() -> void:
 	game._set_mode("remove")
 	game._slot_pressed(0, 0, true)
 	assert(game.cost == 3 and game.hand.size() == 5 and game.lanes[0].rooms[0].is_empty())
-	assert(game.deck.size() == 10)
+	assert(game.deck.size() == 8)
 	var enemy_units = []
 	for i in range(2): enemy_units.append({"name":"적%d" % (i + 1), "hp":20, "attack":1})
 	var soldiers = game.lanes[0].rooms[0]
@@ -363,27 +363,30 @@ func check() -> void:
 	assert(FileAccess.file_exists(game.record_path))
 	# Starting deck, five-card draws and reshuffling only after the draw pile empties.
 	game._new_game()
-	assert(game.deck.size() == 10 and game.hand.size() == 5 and game.draw_pile.size() == 5 and game.discard_pile.is_empty())
+	assert(game.deck.size() == 8 and game.hand.size() == 5 and game.draw_pile.size() == 3 and game.discard_pile.is_empty())
 	var counts := {}
 	for card in game.deck: counts[card.name] = counts.get(card.name, 0) + 1
-	assert(counts == {"가시":3, "화살":1, "낙석":1, "고블린":4, "고블린 궁수":1})
+	assert(counts == {"가시":1, "화살":1, "낙석":1, "고블린":3, "고블린 궁수":2})
 	var next_ids := []
 	for card in game.draw_pile: next_ids.append(card.id)
+	var discard_ids := []
+	for card in game.hand: discard_ids.append(card.id)
 	game._discard_hand()
 	game._draw_hand(5)
-	assert(game.draw_pile.is_empty() and game.discard_pile.size() == 5)
-	for card in game.hand: assert(next_ids.has(card.id))
+	assert(game.hand.size() == 5 and game.draw_pile.size() == 3 and game.discard_pile.is_empty())
+	for i in range(3): assert(next_ids.has(game.hand[i].id))
+	for i in range(3, 5): assert(discard_ids.has(game.hand[i].id))
 	game._discard_hand()
 	game._draw_hand(5)
-	assert(game.hand.size() == 5 and game.draw_pile.size() == 5 and game.discard_pile.is_empty())
+	assert(game.hand.size() == 5 and game.draw_pile.size() == 3 and game.discard_pile.is_empty())
 	var all_ids := []
 	for card in game.hand + game.draw_pile: all_ids.append(card.id)
 	all_ids.sort()
-	assert(all_ids == [0,1,2,3,4,5,6,7,8,9])
+	assert(all_ids == [0,1,2,3,4,5,6,7])
 	game.parties = [{"lane":0, "units":[{"name":"적", "hp":100, "attack":1}], "pos":-1, "done":false}]
 	game.speed = 1.0
 	game._start_wave()
-	assert(game.hand.is_empty() and game.discard_pile.size() == 5 and game.draw_pile.size() == 5)
+	assert(game.hand.is_empty() and game.discard_pile.size() == 5 and game.draw_pile.size() == 3)
 	# Used consumable cards go to the discard pile and a cancelled placement returns the same card.
 	game._new_game()
 	var arrow_card = {"id":9999, "name":"화살"}
@@ -728,6 +731,7 @@ func check() -> void:
 	# The snapshot survives the transition to the next round, and the chosen reward goes to discard.
 	game._new_game()
 	game.parties = [{"lane":0, "pos":1, "done":true, "units":[{"name":"도적", "hp":0, "max_hp":10, "attack":8}]}]
+	game._discard_hand()
 	game._wave_won()
 	assert(game.phase == "카드 보상" and game.offered_cards == ["오크"] and game.showing_previous)
 	assert(game.offered_cards.duplicate().filter(func(name): return name == game.offered_cards[0]).size() == 1)
@@ -735,7 +739,7 @@ func check() -> void:
 	var chosen_reward: String = game.offered_cards[0]
 	var reward_deck_size = game.deck.size()
 	game._choose_card_reward(chosen_reward)
-	assert(game.deck.size() == reward_deck_size + 1 and game.discard_pile.any(func(card): return card.name == chosen_reward))
+	assert(game.deck.size() == reward_deck_size + 1 and (game.hand + game.draw_pile + game.discard_pile).any(func(card): return card.name == chosen_reward))
 	assert(game.round_number == 2 and game.previous_round == 1 and game.previous_parties[0].units[0].hp == 0)
 	assert(not game.showing_previous and game.selected_party == 0)
 	assert(game.enemy_detail_box.get_child(1).text.contains("현재 · 파티 1"))
@@ -760,8 +764,8 @@ func check() -> void:
 	var before_view = game.deck.duplicate(true)
 	game._toggle_deck_view()
 	assert(game.showing_deck and game.deck_view_box.visible and game.deck_view_box.get_child_count() == 2)
-	assert(game.deck_view_box.get_child(0).text.contains("총 10장"))
-	assert(game.hand.size() == 0 and game.draw_pile.size() == 5 and game.discard_pile.size() == 5)
+	assert(game.deck_view_box.get_child(0).text.contains("총 8장"))
+	assert(game.hand.size() == 0 and game.draw_pile.size() == 3 and game.discard_pile.size() == 5)
 	assert(game.deck == before_view and game.phase == "카드 보상")
 	game._toggle_deck_view()
 	assert(not game.showing_deck and not game.deck_view_box.visible and game.deck == before_view)
