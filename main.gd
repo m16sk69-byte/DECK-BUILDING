@@ -337,15 +337,32 @@ func _generate_map(seed_value: int) -> void:
 	map_rng.seed = map_seed
 	var lane_count := map_rng.randi_range(2, 3)
 	map_crossings.clear()
-	var available_boundaries := [1, 2, 3, 4, 5]
-	var crossing_count := map_rng.randi_range(2, 3)
+	# Crossings start only at rooms.
+	var available_boundaries := [1, 4, 6] if lane_count == 2 else [1, 4]
+	var crossing_count := map_rng.randi_range(2, available_boundaries.size())
 	for i in range(crossing_count):
 		var boundary: int = available_boundaries.pop_at(map_rng.randi_range(0, available_boundaries.size() - 1))
 		map_crossings.append({"after":boundary, "top":map_rng.randi_range(0, lane_count - 2)})
 	map_crossings.sort_custom(func(a, b): return a.after < b.after)
 	lanes.clear()
+	var extra_trap_lane := map_rng.randi_range(0, lane_count - 1) if lane_count == 3 else -1
 	for lane in range(lane_count):
-		lanes.append({"traps":[[], [], [], [], []], "rooms":[[], [], []]})
+		if lane_count == 2:
+			lanes.append({"traps":[[], [], [], [], []], "rooms":[[], [], []], "stages":MAP_STAGES.duplicate(true)})
+		else:
+			# Across three lanes: six rooms and ten corridors.
+			var extra := lane == extra_trap_lane
+			var stages := [
+				{"type":"trap", "slot":0}, {"type":"room", "slot":0},
+				{"type":"trap", "slot":1}, {"type":"trap", "slot":2} if extra else {"type":"path"},
+				{"type":"room", "slot":1}, {"type":"trap", "slot":3 if extra else 2},
+				{"type":"path"}, {"type":"path"},
+			]
+			var traps := [[], [], [], []] if extra else [[], [], []]
+			lanes.append({"traps":traps, "rooms":[[], []], "stages":stages})
+
+func _map_stage(lane: int, step: int) -> Dictionary:
+	return lanes[lane].stages[step]
 
 func _crossing_destination(lane: int, after: int) -> int:
 	for crossing in map_crossings:
@@ -467,6 +484,7 @@ func _prepare_round() -> void:
 	_regenerate_soldiers()
 	_draw_hand(maxi(0, 5 - draw_penalty))
 	_generate_parties()
+	showing_previous = false
 	_refresh()
 
 func _generate_parties() -> void:
@@ -795,9 +813,9 @@ func _refresh() -> void:
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	start_button.disabled = phase != "준비"
 	_clear(party_box)
-	if phase == "이벤트":
-		party_box.add_child(_label("다음 라운드의 적 정보는 이벤트 처리 후 표시됩니다.", 16))
-	for i in range(0 if phase == "이벤트" else parties.size()):
+	if phase in ["이벤트", "카드 보상", "보스 보상"]:
+		party_box.add_child(_label("다음 라운드 준비 시 적 정보가 표시됩니다.", 16))
+	for i in range(0 if phase in ["이벤트", "카드 보상", "보스 보상"] else parties.size()):
 		var party: Dictionary = parties[i]
 		var descriptions: Array[String] = []
 		for unit in party.units:
@@ -806,8 +824,8 @@ func _refresh() -> void:
 		var location := "처치" if party.done else "입구 대기"
 		if not party.done and party.pos >= MAP_STAGES.size(): location = "코어 도달"
 		if not party.done and party.pos >= 0 and party.pos < MAP_STAGES.size():
-			var stage: Dictionary = MAP_STAGES[party.pos]
-			location = "%s %d" % ["통로" if stage.type == "trap" else "방", stage.slot + 1]
+			var stage: Dictionary = _map_stage(party.lane, party.pos)
+			location = "이동 중" if stage.type == "path" else "%s %d" % ["통로" if stage.type == "trap" else "방", stage.slot + 1]
 		var label_value := "%s파티 %d → %s 경로 · %s | %s" % ["▶ " if i == selected_party else "", i + 1, _lane_name(party.lane), location, " / ".join(descriptions)]
 		party_box.add_child(_button(label_value, _select_party.bind(i)))
 	_refresh_enemy_details()
@@ -936,22 +954,14 @@ func _refresh_deck_view() -> void:
 func _refresh_enemy_details() -> void:
 	_clear(enemy_detail_box)
 	enemy_detail_box.add_child(_label("적 파티 정보", 18))
-	var tabs := HBoxContainer.new()
-	enemy_detail_box.add_child(tabs)
-	var current_button := _button("현재", _show_current_party)
-	current_button.custom_minimum_size = Vector2(65, 32)
-	tabs.add_child(current_button)
-	for i in range(previous_parties.size()):
-		var old_button := _button("직전 %d" % (i + 1), _select_previous_party.bind(i))
-		old_button.custom_minimum_size = Vector2(70, 32)
-		tabs.add_child(old_button)
-	var visible_parties: Array = previous_parties if showing_previous else parties
-	var index := selected_previous_party if showing_previous else selected_party
-	if visible_parties.is_empty() or index < 0 or index >= visible_parties.size():
+	if phase in ["이벤트", "카드 보상", "보스 보상"]:
+		enemy_detail_box.add_child(_label("다음 라운드 준비 시 적 파티가 표시됩니다.", 14))
+		return
+	if parties.is_empty() or selected_party < 0 or selected_party >= parties.size():
 		enemy_detail_box.add_child(_label("표시할 적 파티가 없습니다.", 14))
 		return
-	var party: Dictionary = visible_parties[index]
-	var party_title := "%s · 파티 %d · %s 경로" % ["%d라운드 결과" % previous_round if showing_previous else "현재", index + 1, _lane_name(party.lane)]
+	var party: Dictionary = parties[selected_party]
+	var party_title := "현재 · 파티 %d · %s 경로" % [selected_party + 1, _lane_name(party.lane)]
 	enemy_detail_box.add_child(_label(party_title, 14))
 	for unit in party.units:
 		var row := HBoxContainer.new()
@@ -968,6 +978,10 @@ func _refresh_enemy_details() -> void:
 		var hp: int = maxi(0, unit.hp)
 		var max_hp: int = maxi(1, unit.get("max_hp", unit.hp))
 		info.add_child(_label("%s · 공격 %d%s" % [unit.name, unit.attack, " · 처치" if hp <= 0 else ""], 14))
+		var ability: String = unit.get("description", "선두 병사 공격")
+		var ability_label := _label("능력: " + ability, 13)
+		ability_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(ability_label)
 		var health_row := HBoxContainer.new()
 		info.add_child(health_row)
 		var bar := ProgressBar.new()
@@ -1137,10 +1151,11 @@ func _start_wave() -> void:
 			if occupied: continue
 			party.pos = next_pos
 			party.lane = next_lane
-			var stage: Dictionary = MAP_STAGES[next_pos]
-			_log("파티 %d: %s 경로 %s %d" % [p + 1, _lane_name(next_lane), "통로" if stage.type == "trap" else "방", stage.slot + 1])
+			var stage: Dictionary = _map_stage(next_lane, next_pos)
+			if stage.type != "path":
+				_log("파티 %d: %s 경로 %s %d" % [p + 1, _lane_name(next_lane), "통로" if stage.type == "trap" else "방", stage.slot + 1])
 			if stage.type == "trap": _apply_traps(party, stage.slot)
-			else:
+			elif stage.type == "room":
 				await _fight(party, stage.slot)
 				if my_token != wave_token: return
 			if _live_enemies(party).is_empty():

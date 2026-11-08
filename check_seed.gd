@@ -6,7 +6,7 @@ func _initialize() -> void:
 func capture_run(game: Control, seed_value: int, disturb_rng: bool) -> Dictionary:
 	game._new_game(seed_value)
 	var output := {
-		"map": JSON.stringify({"lanes":game.lanes.size(), "crossings":game.map_crossings}),
+		"map": JSON.stringify({"lanes":game.lanes, "crossings":game.map_crossings}),
 		"opening_hand": game.hand.map(func(card): return card.name),
 		"enemies": [], "cards": [], "sample_cards": [], "boss_rewards": [], "events": [],
 	}

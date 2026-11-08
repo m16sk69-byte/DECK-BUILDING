@@ -76,21 +76,27 @@ func _draw() -> void:
 		_orthogonal(entry, Vector2(NODES[0], y), path_color, 6)
 		_orthogonal(Vector2(NODES[-1], y), goal, path_color, 6)
 	for crossing in game.map_crossings:
-		var x: float = (NODES[crossing.after] + NODES[crossing.after + 1]) / 2.0
+		var x: float = NODES[crossing.after] + 51.0
 		draw_line(Vector2(x, _lane_y(crossing.top)), Vector2(x, _lane_y(crossing.top + 1)), path_color, 6)
 	var selected_route: Array = []
-	if game.phase != "이벤트" and game.selected_party >= 0 and game.selected_party < game.parties.size():
+	if game.phase not in ["이벤트", "카드 보상", "보스 보상"] and game.selected_party >= 0 and game.selected_party < game.parties.size():
 		selected_route = _party_route(game.parties[game.selected_party])
 		_orthogonal(entry, Vector2(NODES[0], _lane_y(selected_route[0])), GOLD, 4)
 		for stage in range(NODES.size() - 1):
-			_orthogonal(Vector2(NODES[stage], _lane_y(selected_route[stage])), Vector2(NODES[stage + 1], _lane_y(selected_route[stage + 1])), GOLD, 4)
+			var from := Vector2(NODES[stage], _lane_y(selected_route[stage]))
+			var to := Vector2(NODES[stage + 1], _lane_y(selected_route[stage + 1]))
+			var bend_x: float = from.x + 51.0 if from.y != to.y else (from.x + to.x) / 2.0
+			draw_line(from, Vector2(bend_x, from.y), GOLD, 4)
+			draw_line(Vector2(bend_x, from.y), Vector2(bend_x, to.y), GOLD, 4)
+			draw_line(Vector2(bend_x, to.y), to, GOLD, 4)
 		_orthogonal(Vector2(NODES[-1], _lane_y(selected_route[-1])), goal, GOLD, 4)
 	for lane in range(game.lanes.size()):
 		var y := _lane_y(lane)
 		_text(Vector2(100, y - 37), game._lane_name(lane) + " 길", 13, MUTED)
 		for stage_index in range(NODES.size()):
 			var x: float = NODES[stage_index]
-			var stage: Dictionary = game.MAP_STAGES[stage_index]
+			var stage: Dictionary = game._map_stage(lane, stage_index)
+			if stage.type == "path": continue
 			var is_room: bool = stage.type == "room"
 			var rect := Rect2(x - 51, y - 31, 102, 62)
 			draw_rect(rect, Color("304651") if is_room else Color("293a40"))
@@ -138,6 +144,7 @@ func _gui_input(event: InputEvent) -> void:
 			var y := _lane_y(lane)
 			for stage_index in range(NODES.size()):
 				if Rect2(NODES[stage_index] - 51, y - 31, 102, 62).has_point(p):
-					var stage: Dictionary = game.MAP_STAGES[stage_index]
+					var stage: Dictionary = game._map_stage(lane, stage_index)
+					if stage.type == "path": return
 					game._slot_pressed(lane, stage.slot, stage.type == "room")
 					return

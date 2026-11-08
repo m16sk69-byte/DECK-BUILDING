@@ -737,11 +737,22 @@ func check() -> void:
 	game._choose_card_reward(chosen_reward)
 	assert(game.deck.size() == reward_deck_size + 1 and game.discard_pile.any(func(card): return card.name == chosen_reward))
 	assert(game.round_number == 2 and game.previous_round == 1 and game.previous_parties[0].units[0].hp == 0)
-	game._show_current_party()
-	game._select_previous_party(0)
-	assert(game.showing_previous and game.enemy_detail_box.get_child_count() >= 4)
-	var hp_bar: ProgressBar = game.enemy_detail_box.get_child(3).get_child(1).get_child(1).get_child(0)
-	assert(hp_bar.value == 0 and hp_bar.max_value == 10)
+	assert(not game.showing_previous and game.selected_party == 0)
+	assert(game.enemy_detail_box.get_child(1).text.contains("현재 · 파티 1"))
+	var enemy_info: VBoxContainer = game.enemy_detail_box.get_child(2).get_child(1)
+	var hp_bar: ProgressBar = enemy_info.get_child(2).get_child(0)
+	assert(hp_bar.value > 0 and hp_bar.max_value > 0)
+	assert(enemy_info.get_child(1).text.contains(game.parties[0].units[0].description))
+	# Selecting a party updates its individual targeting descriptions.
+	game.parties = [
+		{"lane":0, "pos":-1, "done":false, "units":[{"name":"도적", "hp":10, "max_hp":10, "attack":8, "description":"후열 병사 공격"}]},
+		{"lane":1, "pos":-1, "done":false, "units":[{"name":"저격수", "hp":5, "max_hp":5, "attack":15, "description":"공격력이 가장 높은 병사 공격"}]},
+	]
+	game._select_party(0)
+	assert(game.enemy_detail_box.get_child(2).get_child(1).get_child(1).text.contains("후열 병사 공격"))
+	game._select_party(1)
+	assert(game.enemy_detail_box.get_child(1).text.contains("파티 2"))
+	assert(game.enemy_detail_box.get_child(2).get_child(1).get_child(1).text.contains("공격력이 가장 높은 병사 공격"))
 	# The complete deck viewer includes cards in the hand, draw pile and discard pile during a reward.
 	game._new_game()
 	game._discard_hand()

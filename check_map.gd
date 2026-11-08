@@ -17,8 +17,20 @@ func check() -> void:
 		assert(lane_count in [2, 3])
 		if lane_count == 2 and game.map_crossings.any(func(crossing): return crossing.after == 1): found_two = seed_value
 		elif lane_count == 3: found_three = seed_value
+		var room_count := 0
+		var trap_count := 0
 		for lane in game.lanes:
-			assert(lane.rooms.size() == 3 and lane.traps.size() == 5)
+			room_count += lane.rooms.size()
+			trap_count += lane.traps.size()
+			var room_slots: Array = []
+			var trap_slots: Array = []
+			for stage in lane.stages:
+				if stage.type == "room": room_slots.append(stage.slot)
+				elif stage.type == "trap": trap_slots.append(stage.slot)
+			room_slots.sort()
+			trap_slots.sort()
+			assert(room_slots == range(lane.rooms.size()) and trap_slots == range(lane.traps.size()))
+		assert(room_count == 6 and trap_count == 10)
 		var signature := JSON.stringify({"lanes":lane_count, "crossings":game.map_crossings})
 		different_layouts[signature] = true
 		game._generate_map(seed_value)
@@ -26,6 +38,8 @@ func check() -> void:
 		for crossing in game.map_crossings:
 			assert(crossing.top >= 0 and crossing.top + 1 < lane_count)
 			assert(crossing.after >= 0 and crossing.after < game.MAP_STAGES.size() - 1)
+			assert(game._map_stage(crossing.top, crossing.after).type == "room")
+			assert(game._map_stage(crossing.top + 1, crossing.after).type == "room")
 			assert(game._crossing_destination(crossing.top, crossing.after) == crossing.top + 1)
 			assert(game._crossing_destination(crossing.top + 1, crossing.after) == crossing.top)
 		for sample in range(5):
@@ -65,16 +79,16 @@ func check() -> void:
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
-	click.position = Vector2(900, board._lane_y(2)) * (board.size.x / 1200.0)
+	click.position = Vector2(650, board._lane_y(2)) * (board.size.x / 1200.0)
 	board._gui_input(click)
-	assert(game.lanes[2].rooms[2].size() == 1)
+	assert(game.lanes[2].rooms[1].size() == 1)
 	game.hand.append({"id":90002, "name":"가시"})
 	game._select_card(game.hand.size() - 1)
 	await process_frame
 	board = game.board_box.get_child(0)
-	click.position = Vector2(1025, board._lane_y(2)) * (board.size.x / 1200.0)
+	click.position = Vector2(775, board._lane_y(2)) * (board.size.x / 1200.0)
 	board._gui_input(click)
-	assert(game.lanes[2].traps[4].size() == 1)
+	assert(game.lanes[2].traps[game._map_stage(2, 5).slot].size() == 1)
 	# Two routes merging on one corridor queue and each trigger its actual trap.
 	game._new_game(found_two)
 	game.speed = 0.001
