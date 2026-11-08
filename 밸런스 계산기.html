@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>덱빌딩 디펜스 밸런스 계산기</title>
+<style>
+:root { color-scheme: light; font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color:#26343a; background:#f3f5f2; }
+* { box-sizing:border-box }
+body { margin:0; line-height:1.55 }
+main { width:min(1100px, calc(100% - 32px)); margin:0 auto; padding:34px 0 55px }
+header { margin-bottom:22px }
+.eyebrow { color:#32775e; font-size:13px; font-weight:800; letter-spacing:.1em; margin:0 0 4px }
+h1 { font-size:clamp(25px, 4vw, 34px); margin:0 0 5px; letter-spacing:-.04em }
+.intro { margin:0; color:#5c6b6b }
+.layout { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(300px, .75fr); gap:18px; align-items:start }
+.panel { background:#fff; border:1px solid #dce5df; border-radius:16px; padding:24px; box-shadow:0 8px 30px #243f3110 }
+.panel h2 { margin:0 0 16px; font-size:19px }
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px }
+.field { display:flex; flex-direction:column; gap:6px; min-width:0 }
+.field.full { grid-column:1 / -1 }
+label, legend { font-size:14px; font-weight:700 }
+input, select { font:inherit; width:100%; border:1px solid #becdc4; border-radius:9px; padding:10px 11px; color:#22362d; background:white; min-height:44px }
+input:focus-visible, select:focus-visible, button:focus-visible { outline:3px solid #9ed9b8; outline-offset:2px }
+small, .hint { color:#61736b; font-size:13px }
+fieldset { border:0; padding:0; margin:21px 0 0 }
+legend { font-size:16px; margin-bottom:10px }
+.checks { display:flex; gap:14px; flex-wrap:wrap; margin:12px 0 0 }
+.check { display:flex; align-items:center; gap:7px; font-weight:500 }
+.check input { width:18px; height:18px; min-height:0; accent-color:#32775e }
+.divider { height:1px; background:#e8efea; margin:20px 0 }
+.score { display:flex; align-items:baseline; gap:7px; margin:2px 0 0; font-size:16px; color:#60736a }
+.score strong { font-size:42px; line-height:1.1; color:#225b43 }
+.badge { display:inline-block; margin:12px 0 4px; padding:5px 10px; border-radius:999px; font-size:13px; font-weight:800; background:#e7f3eb; color:#286b49 }
+.badge.over { color:#a64537; background:#fbece8 }
+.badge.neutral { color:#586d63; background:#edf2ee }
+.results { margin:18px 0 0; padding:0; list-style:none }
+.results li { display:flex; justify-content:space-between; gap:14px; padding:8px 0; border-bottom:1px solid #edf1ee; font-size:14px }
+.results li span:last-child { font-weight:700; white-space:nowrap }
+.notice { border-radius:10px; padding:12px 14px; background:#f5f8f6; color:#53655a; font-size:13px; margin:16px 0 0 }
+button { cursor:pointer; color:#315c46; background:#fff; border:1px solid #a7beb0; border-radius:9px; font:inherit; font-weight:700; padding:9px 16px }
+button:hover { background:#edf6f0 }
+.actions { margin-top:22px }
+[hidden] { display:none !important }
+@media (max-width:740px) { main { padding-top:22px } .layout { grid-template-columns:1fr } .panel { padding:19px } }
+@media (max-width:400px) { .grid { grid-template-columns:1fr } .field.full { grid-column:auto } }
+</style>
+</head>
+<body>
+<main>
+<header><p class="eyebrow">DECKBUILDING DEFENSE</p><h1>밸런스 계산기</h1><p class="intro">능력치를 입력하면 점수와 코스트 기준을 바로 확인할 수 있습니다.</p></header>
+<div class="layout">
+<section class="panel" aria-labelledby="input-title">
+<h2 id="input-title">능력치 입력</h2>
+<div class="grid">
+<div class="field"><label for="kind">계산 대상</label><select id="kind"><option value="enemy">적</option><option value="ally">아군 병사</option><option value="trap">함정</option></select></div>
+<div class="field" id="cost-field"><label for="cost">코스트</label><input id="cost" type="number" min="0" step="1" value="1" inputmode="numeric"></div>
+<div class="field" id="health-field"><label for="health">체력</label><input id="health" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+<div class="field"><label for="attack" id="attack-label">공격력</label><input id="attack" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+<div class="field" id="target-field" hidden><label for="targets">피해 대상</label><select id="targets"><option value="1">1명</option><option value="2">2명</option><option value="3">3명</option><option value="4">4명</option><option value="4">전체 공격 (4명 기준)</option></select></div>
+</div>
+<fieldset id="keyword-fields">
+<legend>키워드 수치</legend>
+<div class="grid">
+<div class="field"><label for="lifesteal">#흡혈</label><input id="lifesteal" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 2점</small></div>
+<div class="field"><label for="poison">#중독</label><input id="poison" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 1점</small></div>
+<div class="field"><label for="bleed">#출혈</label><input id="bleed" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 2점</small></div>
+<div class="field"><label for="regen">#재생</label><input id="regen" type="number" min="0" step="1" value="0" inputmode="numeric"><small>수치 1당 0.5점</small></div>
+</div>
+<div class="checks"><label class="check"><input id="blur" type="checkbox"> #흐릿함 (+5점)</label><label class="check"><input id="unique" type="checkbox"> #고유 (0점)</label><label class="check"><input id="front" type="checkbox"> 선두 고정 (0점)</label></div>
+</fieldset>
+<fieldset id="trap-fields" hidden><legend>함정 속성</legend><label class="check"><input id="consumable" type="checkbox"> #소모성 (총점에서 10점 차감)</label></fieldset>
+<div class="divider"></div>
+<div class="field"><label for="extra">기타 효과 점수</label><input id="extra" type="number" step="0.5" value="0" inputmode="decimal"><small>정해진 점수가 있는 추가 효과를 직접 더하거나 빼세요. 예: +3, -2.5</small></div>
+<p class="notice" id="unknown-note">후열 공격, 저격처럼 점수가 아직 정해지지 않은 능력은 자동으로 계산되지 않습니다. 위 점수가 그 능력을 반영한 것은 아닙니다.</p>
+<div class="actions"><button type="button" id="reset">입력 초기화</button></div>
+</section>
+<section class="panel" aria-labelledby="result-title" aria-live="polite">
+<h2 id="result-title">계산 결과</h2>
+<p class="score"><strong id="total">0</strong> 점</p>
+<div id="status" class="badge">기준 내</div>
+<p class="hint" id="limit">코스트 1 × 30점 = 최대 30점</p>
+<ul id="breakdown" class="results"></ul>
+<p class="notice" id="result-note"></p>
+</section>
+</div>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const ids = ["kind", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "consumable", "extra"];
+  const nonnegative = id => Math.max(0, Number($(id).value) || 0);
+  const signed = id => Number($(id).value) || 0;
+  const format = n => Number(n.toFixed(2)).toLocaleString("ko-KR");
+  const addRow = (label, points) => {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    const value = document.createElement("span");
+    name.textContent = label;
+    value.textContent = (points > 0 ? "+" : "") + format(points) + "점";
+    li.append(name, value);
+    $("breakdown").append(li);
+  };
+  function update() {
+    const kind = $("kind").value;
+    const trap = kind === "trap";
+    $("health-field").hidden = trap;
+    $("cost-field").hidden = trap;
+    $("target-field").hidden = !trap;
+    $("keyword-fields").hidden = trap;
+    $("trap-fields").hidden = !trap;
+    $("attack-label").textContent = trap ? "함정 피해" : "공격력";
+    $("unknown-note").textContent = trap
+      ? "피해 이외의 함정 효과는 점수가 정해진 경우에만 기타 효과 점수에 직접 입력하세요."
+      : "후열 공격, 저격처럼 점수가 아직 정해지지 않은 능력은 자동으로 계산되지 않습니다. 위 점수가 그 능력을 반영한 것은 아닙니다.";
+    const attack = nonnegative("attack");
+    const rows = [];
+    if (trap) {
+      const targets = nonnegative("targets");
+      rows.push(["피해 " + format(attack) + " × 대상 기준 " + format(targets + 2), attack * (targets + 2)]);
+      if ($("consumable").checked) rows.push(["#소모성", -10]);
+    } else {
+      rows.push(["체력 " + format(nonnegative("health")) + " × 1", nonnegative("health")]);
+      rows.push(["공격력 " + format(attack) + " × 2", attack * 2]);
+      for (const [id, label, multiplier] of [["lifesteal","흡혈",2],["poison","중독",1],["bleed","출혈",2],["regen","재생",0.5]]) {
+        const value = nonnegative(id);
+        if (value) rows.push(["#" + label + " " + format(value) + " × " + format(multiplier), value * multiplier]);
+      }
+      if ($("blur").checked) rows.push(["#흐릿함", 5]);
+      if ($("unique").checked) rows.push(["#고유", 0]);
+      if ($("front").checked) rows.push(["선두 고정", 0]);
+    }
+    if (signed("extra")) rows.push(["기타 효과", signed("extra")]);
+    const total = rows.reduce((sum, row) => sum + row[1], 0);
+    $("total").textContent = format(total);
+    $("breakdown").replaceChildren();
+    rows.forEach(row => addRow(row[0], row[1]));
+    const status = $("status");
+    if (trap) {
+      status.className = "badge neutral";
+      status.textContent = "총점 계산";
+      $("limit").textContent = "함정의 코스트당 기준은 아직 정해지지 않았습니다.";
+      $("result-note").textContent = "전체 공격은 실제 적의 수와 관계없이 4명 기준으로 계산합니다. 대상 수 점수는 시험용입니다.";
+    } else {
+      const rate = kind === "enemy" ? 30 : 20;
+      const cost = nonnegative("cost");
+      const maximum = cost * rate;
+      const difference = maximum - total;
+      status.className = "badge" + (difference < 0 ? " over" : "");
+      status.textContent = difference < 0 ? "기준 초과 " + format(-difference) + "점" : difference > 0 ? "남은 점수 " + format(difference) + "점" : "기준과 동일";
+      $("limit").textContent = "코스트 " + format(cost) + " × " + rate + "점 = " + (kind === "enemy" ? "최대 " : "기준 ") + format(maximum) + "점";
+      $("result-note").textContent = kind === "ally"
+        ? "일반 병사용 시험 기준입니다. 이벤트나 보스 보상으로 얻는 병사는 이 기준에서 제외됩니다."
+        : "일반 병사와 같은 능력치·키워드 배점이며, 적의 코스트 1당 최대 점수는 30점입니다.";
+    }
+  }
+  ids.forEach(id => { $(id).addEventListener("input", update); $(id).addEventListener("change", update); });
+  $("reset").addEventListener("click", () => {
+    for (const id of ["health", "attack", "lifesteal", "poison", "bleed", "regen", "extra"]) $(id).value = "0";
+    $("cost").value = "1";
+    $("targets").value = "1";
+    for (const id of ["blur", "unique", "front", "consumable"]) $(id).checked = false;
+    update();
+  });
+  update();
+})();
+</script>
+</body>
+</html>
