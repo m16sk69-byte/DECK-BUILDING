@@ -59,6 +59,7 @@ button:hover { background:#edf6f0 }
 <h2 id="input-title">능력치 입력</h2>
 <div class="grid">
 <div class="field"><label for="kind">계산 대상</label><select id="kind"><option value="enemy">적</option><option value="ally">아군 병사</option><option value="trap">함정</option></select></div>
+<div class="field" id="grade-field" hidden><label for="grade">병사 등급</label><select id="grade"><option value="normal">일반</option><option value="upper">상급</option><option value="special">특급</option></select></div>
 <div class="field" id="cost-field"><label for="cost">코스트</label><input id="cost" type="number" min="0" step="1" value="1" inputmode="numeric"></div>
 <div class="field" id="health-field"><label for="health">체력</label><input id="health" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
 <div class="field"><label for="attack" id="attack-label">공격력</label><input id="attack" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
@@ -94,7 +95,12 @@ button:hover { background:#edf6f0 }
 <p class="hint">수치를 바꾸면 위 계산에 즉시 적용됩니다. 점수는 적과 아군이 함께 사용합니다. 감점은 마이너스로 입력하세요.</p>
 <div class="grid settings-grid">
 <div class="field"><label for="weight-enemy">적 코스트 1당 최대점</label><input id="weight-enemy" type="number" min="0" step="any" value="30"></div>
-<div class="field"><label for="weight-ally">아군 코스트 1당 기준점</label><input id="weight-ally" type="number" min="0" step="any" value="20"></div>
+<div class="field"><label for="weight-ally">일반 병사 코스트 1당 기준점</label><input id="weight-ally" type="number" min="0" step="any" value="20"></div>
+<div class="field"><label for="weight-ally-upper">상급 병사 코스트 1당 기준점</label><input id="weight-ally-upper" type="number" min="0" step="any" value="25"></div>
+<div class="field"><label for="weight-ally-special">특급 병사 코스트 1당 기준점</label><input id="weight-ally-special" type="number" min="0" step="any" value="30"></div>
+<div class="field"><label for="weight-ally-zero">일반 병사 0코스트 기준점</label><input id="weight-ally-zero" type="number" min="0" step="any" value="10"></div>
+<div class="field"><label for="weight-ally-upper-zero">상급 병사 0코스트 기준점</label><input id="weight-ally-upper-zero" type="number" min="0" step="any" value="12"></div>
+<div class="field"><label for="weight-ally-special-zero">특급 병사 0코스트 기준점</label><input id="weight-ally-special-zero" type="number" min="0" step="any" value="15"></div>
 <div class="field"><label for="weight-health">체력 1당 점수</label><input id="weight-health" type="number" step="any" value="1"></div>
 <div class="field"><label for="weight-attack">공격력 1당 점수</label><input id="weight-attack" type="number" step="any" value="2"></div>
 <div class="field"><label for="weight-lifesteal">#흡혈 1당 점수</label><input id="weight-lifesteal" type="number" step="any" value="2"></div>
@@ -117,10 +123,12 @@ button:hover { background:#edf6f0 }
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const ids = ["kind", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "taunt", "sword-boost", "cleanse", "consumable", "extra"];
-  const defaults = { enemy:30, ally:20, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, taunt:10, "sword-boost":10, cleanse:20, "trap-base":3, "trap-extra":1, consumable:-10 };
-  const storageKey = "deck-defense-balance-weights-v2";
+  const ids = ["kind", "grade", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "taunt", "sword-boost", "cleanse", "consumable", "extra"];
+  const defaults = { enemy:30, ally:20, "ally-upper":25, "ally-special":30, "ally-zero":10, "ally-upper-zero":12, "ally-special-zero":15, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, taunt:10, "sword-boost":10, cleanse:20, "trap-base":3, "trap-extra":1, consumable:-10 };
+  const storageKey = "deck-defense-balance-weights-v3";
+  const previousStorageKey = "deck-defense-balance-weights-v2";
   const oldStorageKey = "deck-defense-balance-weights-v1";
+  const nonnegativeSettings = ["enemy", "ally", "ally-upper", "ally-special", "ally-zero", "ally-upper-zero", "ally-special-zero"];
   const weights = { ...defaults };
   const nonnegative = id => Math.max(0, Number($(id).value) || 0);
   const signed = id => Number($(id).value) || 0;
@@ -129,14 +137,16 @@ button:hover { background:#edf6f0 }
   let storageAvailable = true;
   try {
     const current = localStorage.getItem(storageKey);
-    const saved = JSON.parse(current || localStorage.getItem(oldStorageKey) || "{}");
+    const previous = current === null ? localStorage.getItem(previousStorageKey) : null;
+    const saved = JSON.parse(current || previous || localStorage.getItem(oldStorageKey) || "{}");
     for (const key of Object.keys(defaults)) {
       const value = saved[key];
-      if (typeof value === "number" && Number.isFinite(value) && (!["enemy","ally"].includes(key) || value >= 0)) weights[key] = value;
+      if (typeof value === "number" && Number.isFinite(value) && (!nonnegativeSettings.includes(key) || value >= 0)) weights[key] = value;
     }
     if (current === null) {
-      // Update the requested enemy baseline once, preserving other saved settings.
-      weights.enemy = defaults.enemy;
+      // Apply the new normal-grade baseline once while retaining other user settings.
+      weights.ally = defaults.ally;
+      if (previous === null) weights.enemy = defaults.enemy;
       localStorage.setItem(storageKey, JSON.stringify(weights));
     }
   } catch (_) { storageAvailable = false; }
@@ -164,6 +174,7 @@ button:hover { background:#edf6f0 }
     const kind = $("kind").value;
     const trap = kind === "trap";
     $("health-field").hidden = trap;
+    $("grade-field").hidden = kind !== "ally";
     $("cost-field").hidden = trap;
     $("target-field").hidden = !trap;
     $("keyword-fields").hidden = trap;
@@ -210,16 +221,24 @@ button:hover { background:#edf6f0 }
       $("limit").textContent = "함정의 코스트당 기준은 아직 정해지지 않았습니다.";
       $("result-note").textContent = "전체 공격은 실제 적의 수와 관계없이 4명 기준으로 계산합니다. 대상 수 점수는 시험용입니다.";
     } else {
-      const rate = weights[kind];
+      const grades = {
+        normal: { name:"일반", rate:"ally", zero:"ally-zero" },
+        upper: { name:"상급", rate:"ally-upper", zero:"ally-upper-zero" },
+        special: { name:"특급", rate:"ally-special", zero:"ally-special-zero" }
+      };
+      const grade = grades[$("grade").value] || grades.normal;
+      const rate = kind === "ally" ? weights[grade.rate] : weights.enemy;
       const cost = nonnegative("cost");
-      const maximum = cost * rate;
+      const maximum = kind === "ally" && cost === 0 ? weights[grade.zero] : cost * rate;
       const difference = maximum - total;
       const roundedDifference = Math.abs(difference) < 1e-9 ? 0 : difference;
       status.className = "badge" + (roundedDifference < 0 ? " over" : "");
       status.textContent = roundedDifference < 0 ? "기준 초과 " + format(-roundedDifference) + "점" : roundedDifference > 0 ? "남은 점수 " + format(roundedDifference) + "점" : "기준과 동일";
-      $("limit").textContent = "코스트 " + format(cost) + " × " + format(rate) + "점 = " + (kind === "enemy" ? "최대 " : "기준 ") + format(maximum) + "점";
+      $("limit").textContent = kind === "ally" && cost === 0
+        ? grade.name + " · 0코스트 = 기준 " + format(maximum) + "점"
+        : (kind === "ally" ? grade.name + " · " : "") + "코스트 " + format(cost) + " × " + format(rate) + "점 = " + (kind === "enemy" ? "최대 " : "기준 ") + format(maximum) + "점";
       $("result-note").textContent = kind === "ally"
-        ? "일반 병사용 시험 기준입니다. 이벤트나 보스 보상으로 얻는 병사는 이 기준에서 제외됩니다."
+        ? "선택한 병사 등급의 시험 기준입니다. 이벤트나 보스 보상으로 얻는 병사는 이 기준에서 제외됩니다."
         : "적은 선택한 코스트당 최대 점수를 사용합니다. 능력치·키워드 배점은 아군과 공통입니다.";
     }
   }
@@ -229,7 +248,7 @@ button:hover { background:#edf6f0 }
     const changeWeight = () => {
       const raw = field.value.trim();
       const value = Number(raw);
-      if (!raw || !Number.isFinite(value) || (["enemy","ally"].includes(key) && value < 0)) {
+      if (!raw || !Number.isFinite(value) || (nonnegativeSettings.includes(key) && value < 0)) {
         field.setAttribute("aria-invalid", "true");
         $("settings-status").textContent = "올바른 점수를 입력하세요. 비어 있거나 잘못된 값은 직전 기준으로 계산합니다.";
         return;
@@ -255,6 +274,7 @@ button:hover { background:#edf6f0 }
   $("reset").addEventListener("click", () => {
     for (const id of ["health", "attack", "lifesteal", "poison", "bleed", "regen", "extra"]) $(id).value = "0";
     $("cost").value = "1";
+    $("grade").value = "normal";
     $("targets").value = "1";
     for (const id of ["blur", "unique", "front", "taunt", "sword-boost", "cleanse", "consumable"]) $(id).checked = false;
     update();
