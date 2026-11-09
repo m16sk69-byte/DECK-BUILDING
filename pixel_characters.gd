@@ -56,13 +56,105 @@ const PATTERNS = {
 		"...KPPKKPPK...Y.",
 		"...KKK..KKK.....",
 	],
+	"임프": [
+		"................",
+		"....K......K....",
+		"....KK....KK....",
+		".....KSSSSK.....",
+		"....KSSSSSSK....",
+		"....KS.ES.ESK...",
+		"....KSSSSSSK....",
+		".....KSSSSK.....",
+		"...KKKBBBBKKK...",
+		"..K..KBBBBK..K..",
+		".....KBBBBK.....",
+		".....KBBBBK.....",
+		"......KBBK......",
+		".....KK..KK.....",
+		"....KK....KK....",
+		"................",
+	],
+	"슬라임": [
+		"................",
+		"................",
+		"................",
+		"................",
+		"......KKKK......",
+		"....KKGGGGKK....",
+		"...KGGGGGGGGK...",
+		"..KGGGEGG.EGGK..",
+		"..KGGGGGGGGGGK..",
+		".KGGGGYYYYGGGGK.",
+		".KGGGGGGGGGGGGK.",
+		".KGGGGGGGGGGGGK.",
+		"..KGGGGGGGGGGK..",
+		"...KKKKKKKKKK...",
+		"................",
+		"................",
+	],
+	"용": [
+		"................",
+		"..KK.......KK...",
+		"..KGK.....KGK...",
+		"..KGGK...KGGK...",
+		"...KGGKKKGGK....",
+		"....KGGGGGK.....",
+		"....KGEGG.GK....",
+		".....KGGGGK.....",
+		"...KKKGGGGKKK...",
+		"..KGGKGGGGKGGK..",
+		".KGG.KGGGGK.GGK.",
+		".....KGGGGK.....",
+		"....KGGGGGGK....",
+		"...KKGGKKGGKK...",
+		"..KK..K..K..KK..",
+		"................",
+	],
+	"하피": [
+		"................",
+		".....KKKKKK.....",
+		"....KSSSSSSK....",
+		"....KSESS.ESK...",
+		".....KSSSSK.....",
+		"..KKKGGGGGGKKK..",
+		".KGGKGGGGGGKGGK.",
+		"KGGG.KGGGGK.GGGK",
+		"KGG..KGGGGK..GGK",
+		".....KGGGGK.....",
+		".....KGGGGK.....",
+		"......KGGK......",
+		".....KY..YK.....",
+		"....KY....YK....",
+		"...KK......KK...",
+		"................",
+	],
+	"거미": [
+		"................",
+		"................",
+		".....KKKKKK.....",
+		"....KSSSSSSK....",
+		"....KSESS.ESK...",
+		".....KSSSSK.....",
+		"..K..KPPPPK..K..",
+		"...KKPPPPPPKK...",
+		"..K.KPPPPPPK.K..",
+		".K..KPPPPPPK..K.",
+		"K...KPPPPPPK...K",
+		"...KPPPPPPPPK...",
+		"..K..KKKKKK..K..",
+		".K............K.",
+		"K..............K",
+		"................",
+	],
 }
 
 static func _base_kind(kind: String) -> String:
 	if kind == "고블린": return "검사"
 	if kind == "고블린 궁수": return "궁수"
 	if kind == "오크" or kind == "언데드 골렘": return "검사"
-	if kind == "녹티스" or kind == "회복술사": return "마법사"
+	if kind == "녹티스" or kind == "회복술사" or kind == "사령술사": return "마법사"
+	if kind == "드래곤" or kind == "가고일": return "용"
+	if kind == "아라크네": return "거미"
 	if kind == "저격수": return "궁수"
 	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스" or kind == "검신 알론드": return "검사"
 	return kind if PATTERNS.has(kind) else "검사"
@@ -80,6 +172,13 @@ static func make_image(kind: String, enemy := false) -> Image:
 	if kind == "오크": palette["S"] = Color("70a86d")
 	if kind == "언데드 골렘": palette["S"] = Color("91aaa0")
 	if kind == "녹티스": palette["S"] = Color("e1d0dc")
+	if kind == "임프": palette["S"] = Color("e38c96")
+	if kind == "슬라임": palette["G"] = Color("80d8d0")
+	if kind == "가고일": palette["G"] = Color("8e9da9")
+	if kind == "드래곤": palette["G"] = Color("78ba80")
+	if kind == "하피": palette["G"] = Color("e5b871")
+	if kind == "아라크네": palette["P"] = Color("866ca5")
+	if kind == "사령술사": palette["P"] = Color("685f88")
 	if enemy:
 		palette["B"] = Color("e67e70")
 		palette["G"] = Color("d9976f")

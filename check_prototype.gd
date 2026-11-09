@@ -24,7 +24,7 @@ func check() -> void:
 	game.card_defs.erase("강화 고블린 시험")
 	assert(not game.REWARDS.has("덱에 낙석 2장 추가"))
 	assert(game.gold == 30)
-	assert(game.card_icons.size() == 9 and game.music_player.stream != null)
+	assert(game.card_icons.size() == 16 and game.music_player.stream != null)
 	assert(game.CARDS["고블린"].hp == 14 and game.CARDS["고블린"].attack == 3 and game.CARDS["고블린"].cost == 1)
 	assert(game.CARDS["고블린 궁수"].hp == 8 and game.CARDS["고블린 궁수"].attack == 6 and game.CARDS["고블린 궁수"].cost == 1)
 	assert(game.CARDS["오크"].hp == 30 and game.CARDS["오크"].attack == 5 and game.CARDS["오크"].cost == 2 and game.CARDS["오크"].front_only)
@@ -792,7 +792,7 @@ func check() -> void:
 	game.parties = [{"lane":0, "pos":1, "done":true, "units":[{"name":"도적", "hp":0, "max_hp":10, "attack":8}]}]
 	game._discard_hand()
 	game._wave_won()
-	assert(game.phase == "카드 보상" and game.offered_cards == ["오크"] and game.showing_previous)
+	assert(game.phase == "카드 보상" and game.offered_cards.size() == 3 and game.showing_previous)
 	assert(game.offered_cards.duplicate().filter(func(name): return name == game.offered_cards[0]).size() == 1)
 	assert(not game.offered_cards.has("녹티스") and not game.offered_cards.has("언데드 골렘"))
 	var chosen_reward: String = game.offered_cards[0]
@@ -849,7 +849,7 @@ func check() -> void:
 	assert(game.hand.has(skill_card) and game.cost == 0 and game.discard_pile.is_empty())
 	# Empty reward pools remain skippable rather than blocking progress.
 	game._new_game()
-	game.card_defs.erase("오크")
+	for card_name in game.ROUND_CARD_POOL: game.card_defs.erase(card_name)
 	game._show_card_reward()
 	assert(game.offered_cards.is_empty() and game.phase == "카드 보상")
 	game._choose_card_reward("")
@@ -876,7 +876,7 @@ func check() -> void:
 			if round_index == 10: assert(game.pending_event)
 			game._choose_reward(game.REWARDS.filter(func(r): return not game.rewards_used.has(r))[0])
 		if game.phase == "카드 보상":
-			assert(game.offered_cards == ["오크"])
+			assert(game.offered_cards.size() == 3 and game.offered_cards.all(func(card_name): return game.ROUND_CARD_POOL.has(card_name)))
 			game._choose_card_reward("")
 			if round_index == 10: assert(game.phase == "이벤트")
 		if game.phase == "이벤트": game._choose_event("leave")

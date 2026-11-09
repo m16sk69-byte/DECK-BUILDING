@@ -11,6 +11,13 @@ const CARDS = {
 	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "description":"HP 30 · 공격 5\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
+	"임프": {"type":"soldier", "cost":0, "hp":4, "attack":3, "rarity":"일반", "description":"HP 4 · 공격 3"},
+	"슬라임": {"type":"soldier", "cost":1, "hp":13, "attack":5, "regen":4, "rarity":"상급", "description":"HP 13 · 공격 5\n#재생4"},
+	"가고일": {"type":"soldier", "cost":2, "hp":26, "attack":7, "rarity":"일반", "description":"HP 26 · 공격 7"},
+	"드래곤": {"type":"soldier", "cost":3, "hp":30, "attack":12, "area_attack":true, "rarity":"특급", "description":"HP 30 · 적 전체 12 피해"},
+	"하피": {"type":"soldier", "cost":1, "hp":7, "attack":3, "targeting":"rear", "rarity":"일반", "description":"HP 7 · 후열 3 피해"},
+	"사령술사": {"type":"soldier", "cost":6, "hp":25, "attack":5, "area_attack":true, "death_discount":true, "rarity":"상급", "description":"HP 25 · 전체 5 피해\n직전 아군 전사당 비용 -1"},
+	"아라크네": {"type":"soldier", "cost":2, "hp":25, "attack":11, "targeting":"highest_attack", "rarity":"상급", "description":"HP 25 · 공격력 최고 적에게 11 피해"},
 }
 const ENEMY_TYPES = {
 	"기사": {"hp":18, "attack":6, "enemy_cost":1, "targeting":"front", "description":"선두 병사 공격"},
@@ -27,7 +34,7 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 15:[["검
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네"]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
@@ -69,6 +76,8 @@ var soldier_bonus := 0
 var trap_bonus := 0
 var damage_total := 0
 var cards_used := 0
+var deaths_this_wave := 0
+var previous_wave_deaths := 0
 var selected_card := -1
 var mode := "card"
 var selected_party := 0
@@ -125,7 +134,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "보스"]:
@@ -301,11 +310,19 @@ func _soldier_stats(name_value: String) -> Dictionary:
 		hp = reduced_hp
 	return {"hp":hp, "attack":attack}
 
+func _card_cost(name_value: String) -> int:
+	var data: Dictionary = card_defs[name_value]
+	return maxi(0, data.cost - previous_wave_deaths) if data.get("death_discount", false) else data.cost
+
 func _display_card_description(name_value: String) -> String:
 	var data: Dictionary = card_defs[name_value]
-	if data.type != "soldier" or not madness_relic: return data.description
+	var description: String = data.description
+	if data.has("rarity"): description = "#%s\n%s" % [data.rarity, description]
+	if data.get("death_discount", false):
+		description += "\n기본 %d · 직전 전사 %d" % [data.cost, previous_wave_deaths]
+	if data.type != "soldier" or not madness_relic: return description
 	var stats := _soldier_stats(name_value)
-	return "유물 적용: HP %d · 공격 %d\n기본: %s" % [stats.hp, stats.attack, data.description]
+	return "유물 적용: HP %d · 공격 %d\n기본: %s" % [stats.hp, stats.attack, description]
 
 func _gain_madness_relic() -> void:
 	if madness_relic: return
@@ -418,6 +435,8 @@ func _new_game(seed_value: int = -1) -> void:
 	selected_event_card = -1
 	damage_total = 0
 	cards_used = 0
+	deaths_this_wave = 0
+	previous_wave_deaths = 0
 	played_rounds = 0
 	selected_card = -1
 	selected_party = 0
@@ -717,7 +736,7 @@ func _remove_soldier(lane: int, slot: int, index: int) -> void:
 	if index < 0 or index >= soldiers.size(): return
 	var soldier: Dictionary = soldiers.pop_at(index)
 	if soldier.placed_round == round_number:
-		cost += card_defs[soldier.name].cost
+		cost += soldier.get("paid_cost", card_defs[soldier.name].cost)
 		discard_pile.erase(soldier.card)
 		hand.append(soldier.card)
 		cards_used -= 1
@@ -833,7 +852,8 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		if (data.type == "soldier") != is_room:
 			_log("병사는 방에, 함정은 통로에 배치합니다.")
 			return
-		if cost < data.cost:
+		var placement_cost := _card_cost(card.name)
+		if cost < placement_cost:
 			_log("코스트가 부족합니다.")
 			return
 		if is_room and placements.size() >= 4:
@@ -847,7 +867,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 				if card_defs[existing.name].slot == data.slot:
 					_log("같은 설치면에는 함정을 하나만 놓을 수 있습니다.")
 					return
-		var placed := {"name":card.name, "card":card, "placed_round":round_number}
+		var placed := {"name":card.name, "card":card, "placed_round":round_number, "paid_cost":placement_cost}
 		if is_room:
 			var stats := _soldier_stats(card.name)
 			placed["hp"] = stats.hp
@@ -857,7 +877,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 			placed["hits"] = 0
 		if is_room: _put_soldier(placements, placed)
 		else: placements.append(placed)
-		cost -= data.cost
+		cost -= placement_cost
 		cards_used += 1
 		hand.remove_at(selected_card)
 		discard_pile.append(card)
@@ -968,12 +988,12 @@ func _refresh() -> void:
 	for i in range(hand.size()):
 		var card: Dictionary = hand[i]
 		var data: Dictionary = card_defs[card.name]
-		var text_value: String = "%s%s\n비용 %d\n%s" % ["▶" if selected_card == i else "", card.name, data.cost, _display_card_description(card.name)]
+		var text_value: String = "%s%s\n비용 %d\n%s" % ["▶" if selected_card == i else "", card.name, _card_cost(card.name), _display_card_description(card.name)]
 		if data.type == "trap": text_value += "\n함정 · " + data.slot
 		elif data.type == "soldier": text_value += "\n병사"
 		elif data.type == "skill": text_value += "\n스킬 · 클릭해 사용"
 		var card_button := _button(text_value, _select_card.bind(i))
-		var keyword_help := ""
+		var keyword_help := _display_card_description(card.name) + "\n"
 		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
 		if data.get("regen", 0) > 0: keyword_help += "#재생: 매 라운드 준비 시작 시 표시된 만큼 회복합니다.\n"
 		if data.get("lifesteal", 0) > 0: keyword_help += "#흡혈: 공격할 때 표시된 만큼 회복합니다.\n"
@@ -1018,7 +1038,7 @@ func _refresh_deck_view() -> void:
 		panel.custom_minimum_size = Vector2(245, 75)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		grid.add_child(panel)
-		panel.add_child(_label("%s × %d · 코스트 %d\n%s" % [card_name, counts[card_name], data.cost, _display_card_description(card_name)], 14))
+		panel.add_child(_label("%s × %d · 코스트 %d\n%s" % [card_name, counts[card_name], _card_cost(card_name), _display_card_description(card_name)], 14))
 
 func _refresh_enemy_details() -> void:
 	_clear(enemy_detail_box)
@@ -1110,6 +1130,18 @@ func _single_target_soldier(soldiers: Array, targeting := "front") -> Dictionary
 		return selected
 	return candidates.front()
 
+func _single_target_enemy(enemies: Array, targeting: String, taunters: Array) -> Dictionary:
+	var forced: Dictionary = {}
+	for taunter in taunters:
+		if taunter.hp > 0 and enemies.has(taunter): forced = taunter
+	if not forced.is_empty(): return forced
+	if targeting == "rear": return enemies.back()
+	var chosen: Dictionary = enemies.front()
+	if targeting == "highest_attack":
+		for enemy in enemies:
+			if enemy.attack > chosen.attack: chosen = enemy
+	return chosen
+
 func _apply_traps(party: Dictionary, slot: int) -> void:
 	var traps: Array = lanes[party.lane].traps[slot]
 	var ordered: Array = []
@@ -1171,9 +1203,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
 				else:
 					var living := _live_enemies(party)
-					var target: Dictionary = living.front()
-					for taunter in taunters:
-						if taunter.hp > 0 and living.has(taunter): target = taunter
+					var target := _single_target_enemy(living, card_defs[ally.name].get("targeting", "front"), taunters)
 					_soldier_hit_enemy(target, attack, ally)
 				var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
 				if lifesteal > 0:
@@ -1223,6 +1253,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 						_log("%s → %s %d 피해 (HP %d)" % [enemy.name, target.name, enemy.attack, target.hp])
 						if target.hp <= 0:
 							soldiers.erase(target)
+							if phase == "웨이브": deaths_this_wave += 1
 							_log("%s 전사" % target.name)
 				if phase == "웨이브":
 					_refresh()
@@ -1237,6 +1268,7 @@ func _start_wave() -> void:
 	if phase != "준비": return
 	showing_previous = false
 	_discard_hand()
+	deaths_this_wave = 0
 	moving_soldier.clear()
 	selected_order.clear()
 	phase = "웨이브"
@@ -1282,6 +1314,7 @@ func _start_wave() -> void:
 	_wave_won()
 
 func _wave_won() -> void:
+	previous_wave_deaths = deaths_this_wave
 	played_rounds = round_number
 	previous_parties = parties.duplicate(true)
 	previous_round = round_number
@@ -1323,7 +1356,7 @@ func _show_card_reward() -> void:
 	options_box.add_child(reward_heading)
 	for card_name in offered_cards:
 		var data: Dictionary = card_defs[card_name]
-		var reward_button := _button("%s\n코스트 %d\n%s" % [card_name, data.cost, _display_card_description(card_name)], _choose_card_reward.bind(card_name))
+		var reward_button := _button("%s\n코스트 %d\n%s" % [card_name, _card_cost(card_name), _display_card_description(card_name)], _choose_card_reward.bind(card_name))
 		reward_button.custom_minimum_size = Vector2(130, 105)
 		if card_icons.has(card_name):
 			reward_button.icon = card_icons[card_name]
@@ -1532,6 +1565,11 @@ func _finish_research() -> void:
 		if amount > 0: result[keyword] = amount
 	if a.get("front_only", false) or b.get("front_only", false): result["front_only"] = true
 	if a.get("blur", false) or b.get("blur", false): result["blur"] = true
+	if a.get("area_attack", false) or b.get("area_attack", false): result["area_attack"] = true
+	if a.get("death_discount", false) or b.get("death_discount", false): result["death_discount"] = true
+	var targets := [a.get("targeting", "front"), b.get("targeting", "front")]
+	if "highest_attack" in targets: result["targeting"] = "highest_attack"
+	elif "rear" in targets: result["targeting"] = "rear"
 	var description := "HP %d · 공격 %d" % [result.hp, result.attack]
 	if result.get("regen", 0) > 0: description += "\n#재생%d" % result.regen
 	if result.get("lifesteal", 0) > 0: description += " #흡혈%d" % result.lifesteal
@@ -1539,6 +1577,10 @@ func _finish_research() -> void:
 	if result.get("poison", 0) > 0: description += " #중독%d" % result.poison
 	if result.get("bleed", 0) > 0: description += " #출혈%d" % result.bleed
 	if result.get("front_only", false): description += " 선두 고정"
+	if result.get("area_attack", false): description += "\n적 전체 공격"
+	if result.get("targeting", "") == "highest_attack": description += "\n최고 공격력 적 공격"
+	elif result.get("targeting", "") == "rear": description += "\n후열 적 공격"
+	if result.get("death_discount", false): description += "\n직전 아군 전사당 비용 -1"
 	result["description"] = description
 	card_defs[name_value] = result
 	card_icons[name_value] = card_icons["고블린"]
