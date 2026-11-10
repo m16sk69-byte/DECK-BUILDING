@@ -11,9 +11,10 @@ func check() -> void:
 	game.speed = 0.001
 	var party_shapes := {}
 	var budget_three_shapes := {}
+	var healer_seen := false
 	for seed_value in range(300):
 		game._generate_map(seed_value)
-		for test_round in [1, 3, 6, 11, 19]:
+		for test_round in [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 19]:
 			game.round_number = test_round
 			game._generate_parties()
 			var total := 0
@@ -23,6 +24,8 @@ func check() -> void:
 				for unit in party.units:
 					total += unit.enemy_cost
 					names.append(unit.name)
+					assert(unit.name != "동국의 검사")
+					if unit.name == "회복술사": healer_seen = true
 					if unit.get("requires_party", false): assert(party.units.size() >= 2)
 					if unit.name == "마법사": assert(test_round >= 6)
 				if party.units.size() > 1:
@@ -43,7 +46,23 @@ func check() -> void:
 			game._generate_parties()
 			assert(first == JSON.stringify(game.parties))
 	assert(party_shapes.has(1) and party_shapes.has(2) and party_shapes.has(3))
+	assert(healer_seen)
 	for shape in ["1+1+1", "1+2", "1/1+1", "1/1/1"]: assert(budget_three_shapes.has(shape))
+	# The swordsman remains in the fixed round-five boss party.
+	game.round_number = 5
+	game._generate_parties()
+	assert(game.parties.size() == 1 and game.parties[0].units.map(func(unit): return unit.name) == ["기사", "동국의 검사", "저격수"])
+	# Round 20 uses the temporary boss and fills its three companion slots with eligible units.
+	for seed_value in range(100):
+		game._generate_map(seed_value)
+		game.round_number = 20
+		game._generate_parties()
+		assert(game.parties.size() == 1 and game.parties[0].units.size() == 4)
+		var total := 0
+		for unit in game.parties[0].units:
+			total += unit.enemy_cost
+			assert(unit.name != "동국의 검사")
+		assert(total == 10)
 	# Taunt starts with the shieldbearer's first attack, overriding front targeting.
 	game._new_game(123)
 	game.card_defs["고블린"].attack = 10

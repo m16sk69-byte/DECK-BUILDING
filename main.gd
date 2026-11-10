@@ -28,9 +28,9 @@ const ENEMY_TYPES = {
 	"저격수": {"hp":6, "attack":12, "enemy_cost":1, "targeting":"highest_attack", "requires_party":true, "description":"공격력이 가장 높은 병사 우선 공격 · 혼자 등장 불가"},
 	"도적": {"hp":8, "attack":11, "enemy_cost":1, "targeting":"rear", "description":"후열 병사 우선 공격"},
 	"방패병": {"hp":42, "attack":4, "enemy_cost":2, "targeting":"front", "taunt":true, "description":"각 방 첫 공격에 도발 · 방 전투 동안 자신에게 단일 공격 유도"},
-	"동국의 검사": {"hp":60, "attack":10, "enemy_cost":3, "targeting":"front", "attack_count":0, "attack_boost_interval":3, "attack_boost":5, "description":"세 번째 공격마다 공격력 +5 후 공격"},
+	"동국의 검사": {"hp":60, "attack":10, "enemy_cost":3, "targeting":"front", "boss_only":true, "attack_count":0, "attack_boost_interval":3, "attack_boost":5, "description":"보스 파티 전용 · 세 번째 공격마다 공격력 +5 후 공격"},
 	"마법사": {"hp":15, "attack":9, "enemy_cost":2, "area_attack":true, "requires_party":true, "min_round":6, "description":"모든 병사 범위 공격 · 6라운드부터 · 혼자 등장 불가"},
-	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "heal_amount":5, "description":"공격 대신 체력이 부족한 아군을 5 회복"},
+	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "heal_amount":5, "requires_party":true, "description":"공격 대신 체력이 부족한 아군을 5 회복 · 혼자 등장 불가"},
 	"피에 굶주린자": {"hp":70, "attack":15, "enemy_cost":4, "targeting":"front", "boss_only":true, "inflicts_bleed":5, "description":"선두 병사 공격 · 공격 시 #출혈5"},
 	"피를 원하는자": {"hp":40, "attack":20, "enemy_cost":4, "targeting":"rear", "boss_only":true, "inflicts_bleed":5, "description":"후열 병사 우선 공격 · 공격 시 #출혈5"},
 	"검신 알론드": {"hp":200, "attack":40, "enemy_cost":10, "targeting":"front", "boss_only":true, "cleanse_every":3, "attacks_since_cleanse":0, "description":"3회 공격 후 다음 행동 전, 또는 방의 병사 전멸 시 상태 이상 회복"},
@@ -583,9 +583,17 @@ func _make_enemy(role: String) -> Dictionary:
 	enemy["max_hp"] = enemy.hp
 	return enemy
 
+func _max_regular_enemy_cost() -> int:
+	var maximum := 0
+	for data in ENEMY_TYPES.values():
+		if not data.get("boss_only", false) and round_number >= data.get("min_round", 1):
+			maximum = maxi(maximum, data.enemy_cost)
+	return maximum
+
 func _generate_enemy_group(budget: int, slots: int, stream: RandomNumberGenerator, has_companion := false) -> Array:
 	var units: Array = []
 	var remaining := budget
+	var max_unit_cost := _max_regular_enemy_cost()
 	while remaining > 0 and units.size() < slots:
 		var candidates: Array = []
 		var slots_after: int = slots - units.size() - 1
@@ -593,7 +601,7 @@ func _generate_enemy_group(budget: int, slots: int, stream: RandomNumberGenerato
 			var data: Dictionary = ENEMY_TYPES[role]
 			if data.get("boss_only", false) or round_number < data.get("min_round", 1): continue
 			var price: int = data.enemy_cost
-			if price > remaining or remaining - price > slots_after * 3: continue
+			if price > remaining or remaining - price > slots_after * max_unit_cost: continue
 			if data.get("requires_party", false) and units.is_empty() and not has_companion and remaining - price < 1: continue
 			candidates.append(role)
 		if candidates.is_empty(): break
@@ -640,14 +648,15 @@ func _generate_parties() -> void:
 		# The round 20 boss party remains a placeholder.
 		var boss := {"name":"보스", "hp":24 + round_number * 2, "max_hp":24 + round_number * 2, "attack":5 + int(round_number / 5), "enemy_cost":4, "description":"임시 보스"}
 		var units := [boss]
-		units.append_array(_generate_enemy_group(mini(budget - 4, 9), 3, encounter_rng, true))
+		units.append_array(_generate_enemy_group(mini(budget - 4, 3 * _max_regular_enemy_cost()), 3, encounter_rng, true))
 		_append_enemy_party(_order_enemy_group(units, encounter_rng), encounter_rng)
 	else:
 		var remaining := budget
+		var max_party_cost := 4 * _max_regular_enemy_cost()
 		while remaining > 0 and parties.size() < 3:
 			var parties_after: int = 2 - parties.size()
-			var minimum := maxi(1, remaining - parties_after * 12)
-			var maximum := mini(remaining, 12)
+			var minimum := maxi(1, remaining - parties_after * max_party_cost)
+			var maximum := mini(remaining, max_party_cost)
 			var party_budget := encounter_rng.randi_range(minimum, maximum)
 			var units := _generate_enemy_group(party_budget, 4, encounter_rng)
 			if units.is_empty(): break
