@@ -74,8 +74,9 @@ func check() -> void:
 	game.lanes[0].rooms[0].append({"name":"고블린", "hp":2, "max_hp":2})
 	game.log_lines.clear()
 	await game._fight({"lane":0, "units":[wounded, healer]}, 0)
-	assert(wounded.hp == 14)
-	assert(game.log_lines.any(func(line): return line.begins_with("회복술사 → 기사 체력 10 회복")))
+	assert(healer.heal_amount == 5 and healer.attack == 10)
+	assert(wounded.hp == 9)
+	assert(game.log_lines.any(func(line): return line.begins_with("회복술사 → 기사 체력 5 회복")))
 	assert(not game.log_lines.any(func(line): return line.begins_with("회복술사 → 고블린")))
 	# Mage hits all defenders on its turn.
 	game._new_game(123)

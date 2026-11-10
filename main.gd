@@ -8,7 +8,7 @@ const CARDS = {
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
-	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "description":"HP 30 · 공격 5\n선두 고정"},
+	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "rarity":"일반", "rarity_provisional":true, "description":"HP 30 · 공격 5\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 	"모험가": {"type":"soldier", "cost":1, "hp":15, "attack":5, "unique":true, "event_only":true, "versatile":true, "rarity":"특급", "description":"HP 15 · 공격 5\n#이벤트 #고유 #만능 · 방 이동 무료"},
@@ -30,7 +30,7 @@ const ENEMY_TYPES = {
 	"방패병": {"hp":42, "attack":4, "enemy_cost":2, "targeting":"front", "taunt":true, "description":"각 방 첫 공격에 도발 · 방 전투 동안 자신에게 단일 공격 유도"},
 	"동국의 검사": {"hp":60, "attack":10, "enemy_cost":3, "targeting":"front", "attack_count":0, "attack_boost_interval":3, "attack_boost":5, "description":"세 번째 공격마다 공격력 +5 후 공격"},
 	"마법사": {"hp":15, "attack":9, "enemy_cost":2, "area_attack":true, "requires_party":true, "min_round":6, "description":"모든 병사 범위 공격 · 6라운드부터 · 혼자 등장 불가"},
-	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "description":"공격 대신 체력이 부족한 아군을 공격력만큼 회복"},
+	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "heal_amount":5, "description":"공격 대신 체력이 부족한 아군을 5 회복"},
 	"검신 알론드": {"hp":200, "attack":40, "enemy_cost":10, "targeting":"front", "boss_only":true, "cleanse_every":3, "attacks_since_cleanse":0, "description":"3회 공격 후 다음 행동 전, 또는 방의 병사 전멸 시 상태 이상 회복"},
 }
 const ENEMY_BUDGETS := [1, 2, 2, 2, 5, 3, 3, 4, 4, 8, 5, 5, 6, 6, 10, 7, 7, 8, 8, 20]
@@ -39,6 +39,7 @@ const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
 const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "치명적인 독소", "유연한 사고"]
+const CARD_RARITY_WEIGHTS = {"일반":65, "상급":30, "특급":5}
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
@@ -326,7 +327,7 @@ func _card_cost(name_value: String) -> int:
 func _display_card_description(name_value: String) -> String:
 	var data: Dictionary = card_defs[name_value]
 	var description: String = data.description
-	if data.has("rarity"): description = "#%s\n%s" % [data.rarity, description]
+	if data.has("rarity"): description = "#%s%s\n%s" % [data.rarity, " (임시)" if data.get("rarity_provisional", false) else "", description]
 	if data.get("death_discount", false):
 		description += "\n기본 %d · 직전 전사 %d" % [data.cost, previous_wave_deaths]
 	if data.type != "soldier" or not madness_relic: return description
@@ -411,6 +412,33 @@ func _sample_options(pool: Array, count: int, stream: RandomNumberGenerator) -> 
 	var result: Array = []
 	for i in range(mini(count, remaining.size())):
 		result.append(remaining.pop_at(stream.randi_range(0, remaining.size() - 1)))
+	return result
+
+func _sample_reward_cards(pool: Array, count: int, stream: RandomNumberGenerator) -> Array:
+	var remaining := pool.duplicate()
+	var result := []
+	while result.size() < count:
+		var groups := {"일반":[], "상급":[], "특급":[]}
+		for card_name in remaining:
+			if not card_defs.has(card_name): continue
+			var rarity: String = card_defs[card_name].get("rarity", "")
+			if groups.has(rarity): groups[rarity].append(card_name)
+		var total := 0
+		for rarity in CARD_RARITY_WEIGHTS:
+			if not groups[rarity].is_empty(): total += CARD_RARITY_WEIGHTS[rarity]
+		if total == 0: break
+		var roll := stream.randi_range(1, total)
+		var chosen_rarity := ""
+		for rarity in CARD_RARITY_WEIGHTS:
+			if groups[rarity].is_empty(): continue
+			roll -= CARD_RARITY_WEIGHTS[rarity]
+			if roll <= 0:
+				chosen_rarity = rarity
+				break
+		var choices: Array = groups[chosen_rarity]
+		var selected = choices[stream.randi_range(0, choices.size() - 1)]
+		result.append(selected)
+		remaining.erase(selected)
 	return result
 
 func _make_party_route(start_lane: int, route_rng: RandomNumberGenerator = null) -> Array:
@@ -1285,7 +1313,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 					if injured.is_empty():
 						_log("%s 치유: 회복할 아군 없음" % enemy.name)
 					else:
-						var restored: int = mini(enemy.attack, injured.max_hp - injured.hp)
+						var restored: int = mini(enemy.get("heal_amount", enemy.attack), injured.max_hp - injured.hp)
 						injured.hp += restored
 						battle_notice = "%s → %s · %d 회복" % [enemy.name, injured.name, restored]
 						_log("%s → %s 체력 %d 회복 (HP %d)" % [enemy.name, injured.name, restored, injured.hp])
@@ -1404,7 +1432,7 @@ func _show_card_reward() -> void:
 	phase = "카드 보상"
 	offered_cards.clear()
 	var candidates: Array = ROUND_CARD_POOL.filter(func(card_name): return card_defs.has(card_name) and not _starter_only(card_name))
-	offered_cards = _sample_options(candidates, 3, _seeded_rng("card_reward", round_number))
+	offered_cards = _sample_reward_cards(candidates, 3, _seeded_rng("card_reward", round_number))
 	_clear(options_box)
 	var reward_heading := _label("라운드 카드 보상\n%d장 중 하나 선택" % offered_cards.size() if not offered_cards.is_empty() else "라운드 카드 보상\n선택할 카드 없음", 16)
 	reward_heading.autowrap_mode = TextServer.AUTOWRAP_OFF
