@@ -155,7 +155,7 @@ static func _base_kind(kind: String) -> String:
 	if kind == "녹티스" or kind == "회복술사" or kind == "사령술사": return "마법사"
 	if kind == "드래곤" or kind == "가고일": return "용"
 	if kind == "아라크네": return "거미"
-	if kind == "저격수": return "궁수"
+	if kind == "저격수" or kind == "피를 원하는자": return "궁수"
 	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스" or kind == "검신 알론드": return "검사"
 	return kind if PATTERNS.has(kind) else "검사"
 
@@ -187,6 +187,10 @@ static func make_image(kind: String, enemy := false) -> Image:
 	if kind == "보스" or kind == "동국의 검사" or kind == "검신 알론드":
 		palette["M"] = Color("f3c65e")
 		palette["B"] = Color("a25c92")
+	if kind == "피에 굶주린자":
+		palette["M"] = Color("922e49")
+		palette["B"] = Color("b83353")
+	if kind == "피를 원하는자": palette["G"] = Color("b65376")
 	for y in range(16):
 		var row: String = PATTERNS[_base_kind(kind)][y]
 		for x in range(mini(16, row.length())):

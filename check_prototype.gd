@@ -507,9 +507,9 @@ func check() -> void:
 	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
 	game.round_number = 9
-	assert(game._eligible_events(game.round_number).size() == 7 and not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 8 and not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	game.round_number = 10
-	assert(game._eligible_events(game.round_number).size() == 8 and game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT) and game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 9 and game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT) and game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	assert(game._eligible_events(9).has(game.VAMPIRE_EVENT) and not game._eligible_events(9).has(game.MADNESS_EVENT))
 	assert(not game._eligible_events(11).has(game.VAMPIRE_EVENT) and game._eligible_events(11).has(game.MADNESS_EVENT))
 	# Check selection with the current and larger candidate pools.
@@ -525,7 +525,7 @@ func check() -> void:
 	assert(game._random_event([]) == null)
 	game.round_number = 9
 	game._show_event()
-	assert(not game._eligible_events(10).has(game.current_event) and game._eligible_events(10).size() == 7)
+	assert(not game._eligible_events(10).has(game.current_event) and game._eligible_events(10).size() == 8)
 	assert(game.summary.text.begins_with("10 / 20 라운드   |   대기 · 이벤트"))
 	game.round_number = 12
 	assert(not game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT))
