@@ -1608,7 +1608,8 @@ func _eligible_events(event_round: int) -> Array:
 	if event_round >= 1 and event_round <= 20 and not seen_events.has(DRAGON_EVENT): eligible.append(DRAGON_EVENT)
 	if event_round >= 1 and event_round <= 20 and not seen_events.has(CHAOS_EVENT): eligible.append(CHAOS_EVENT)
 	if event_round >= 1 and event_round <= 20 and not seen_events.has(MERCHANT_EVENT): eligible.append(MERCHANT_EVENT)
-	if event_round >= 11 and event_round <= 19 and not seen_events.has(EVOLUTION_EVENT): eligible.append(EVOLUTION_EVENT)
+	if event_round >= 11 and event_round + 1 <= 20 and event_round % 5 != 0 and (event_round + 1) % 5 != 0 and not seen_events.has(EVOLUTION_EVENT):
+		eligible.append(EVOLUTION_EVENT)
 	if event_round >= 1 and event_round <= 10 and not seen_events.has(VAMPIRE_EVENT):
 		eligible.append(VAMPIRE_EVENT)
 	if event_round >= 10 and event_round <= 20 and not seen_events.has(MADNESS_EVENT):

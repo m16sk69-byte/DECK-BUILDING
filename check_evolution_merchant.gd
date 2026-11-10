@@ -9,7 +9,11 @@ func check() -> void:
 	await process_frame
 	game._new_game(42)
 	assert(not game._eligible_events(9).has(game.EVOLUTION_EVENT))
-	assert(game._eligible_events(11).has(game.EVOLUTION_EVENT) and game._eligible_events(19).has(game.EVOLUTION_EVENT))
+	for event_round in range(11, 21):
+		var should_appear := event_round < 20 and event_round % 5 != 0 and (event_round + 1) % 5 != 0
+		assert(game._eligible_events(event_round).has(game.EVOLUTION_EVENT) == should_appear)
+	for event_round in [11, 13, 17]: assert(game._eligible_events(event_round).has(game.EVOLUTION_EVENT))
+	for event_round in [15, 19]: assert(not game._eligible_events(event_round).has(game.EVOLUTION_EVENT))
 	assert(game._eligible_events(3).has(game.MERCHANT_EVENT) and game._eligible_events(19).has(game.MERCHANT_EVENT))
 	assert(not game.ROUND_CARD_POOL.has("생존 본능") and game.CARDS["생존 본능"].event_only)
 	# Two complete rounds use two less cost; the relic is awarded on the second win.
