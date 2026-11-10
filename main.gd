@@ -11,6 +11,10 @@ const CARDS = {
 	"오크": {"type":"soldier", "cost":2, "hp":30, "attack":5, "front_only":true, "description":"HP 30 · 공격 5\n선두 고정"},
 	"녹티스": {"type":"soldier", "cost":2, "hp":20, "attack":8, "unique":true, "lifesteal":3, "description":"HP 20 · 공격 8\n#고유 #흡혈3"},
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
+	"모험가": {"type":"soldier", "cost":1, "hp":15, "attack":5, "unique":true, "event_only":true, "versatile":true, "rarity":"특급", "description":"HP 15 · 공격 5\n#이벤트 #고유 #만능 · 방 이동 무료"},
+	"용인전사": {"type":"soldier", "cost":1, "hp":15, "attack":5, "rarity":"상급", "description":"HP 15 · 공격 5"},
+	"치명적인 독소": {"type":"skill", "cost":2, "toxins":5, "rarity":"특급", "description":"이번 웨이브의 모든 병사와 적에게 #중독5"},
+	"유연한 사고": {"type":"skill", "cost":1, "draw":2, "discard":1, "rarity":"상급", "description":"카드 2장 드로우 후 1장 버리기"},
 	"임프": {"type":"soldier", "cost":0, "hp":4, "attack":3, "rarity":"일반", "description":"HP 4 · 공격 3"},
 	"슬라임": {"type":"soldier", "cost":1, "hp":13, "attack":5, "regen":4, "rarity":"상급", "description":"HP 13 · 공격 5\n#재생4"},
 	"가고일": {"type":"soldier", "cost":2, "hp":26, "attack":7, "rarity":"일반", "description":"HP 26 · 공격 7"},
@@ -34,10 +38,12 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 15:[["검
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "치명적인 독소", "유연한 사고"]
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
 const VAMPIRE_EVENT = "흡혈귀와의 만남"
+const WOUNDED_EVENT = "상처입은 모험가"
+const DRAGON_EVENT = "용족의 비술"
 const NOCTIS_PRICE := 30
 const RITUAL_KEYWORDS = {"regen":5, "lifesteal":2, "blur":0, "poison":5, "bleed":3}
 const KEYWORD_NAMES = {"regen":"재생", "lifesteal":"흡혈", "blur":"흐릿함", "poison":"중독", "bleed":"출혈"}
@@ -56,6 +62,9 @@ var research_selected: Array = []
 var selected_event_card := -1
 var madness_relic := false
 var draw_penalty := 0
+var dragon_pendant := false
+var toxin_power := 0
+var pending_skill_discards := 0
 var deck: Array = []
 var hand: Array = []
 var draw_pile: Array = []
@@ -134,7 +143,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "치명적인 독소", "유연한 사고"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "보스"]:
@@ -432,6 +441,9 @@ func _new_game(seed_value: int = -1) -> void:
 	trap_bonus = 0
 	madness_relic = false
 	draw_penalty = 0
+	dragon_pendant = false
+	toxin_power = 0
+	pending_skill_discards = 0
 	selected_event_card = -1
 	damage_total = 0
 	cards_used = 0
@@ -501,12 +513,22 @@ func _regenerate_soldiers() -> void:
 
 func _prepare_round() -> void:
 	phase = "준비"
+	toxin_power = 0
+	pending_skill_discards = 0
+	for lane in lanes:
+		for room in lane.rooms:
+			for soldier in room: soldier.erase("poison")
+	for entry in reserves: entry.soldier.erase("poison")
 	cost = max_cost
 	selected_card = -1
 	mode = "card"
 	_regenerate_soldiers()
 	_draw_hand(maxi(0, 5 - draw_penalty))
 	_generate_parties()
+	if dragon_pendant:
+		for party in parties:
+			for enemy in _live_enemies(party): _damage_enemy(enemy, 4, "용족의 팬던트")
+			if _live_enemies(party).is_empty(): party.done = true
 	showing_previous = false
 	_refresh()
 
@@ -620,6 +642,13 @@ func _put_soldier(room: Array, soldier: Dictionary) -> void:
 
 func _select_card(index: int) -> void:
 	if phase != "준비" or index < 0 or index >= hand.size(): return
+	if pending_skill_discards > 0:
+		var discarded: Dictionary = hand.pop_at(index)
+		discard_pile.append(discarded)
+		pending_skill_discards -= 1
+		_log("유연한 사고: %s 버림" % discarded.name)
+		_refresh()
+		return
 	if card_defs[hand[index].name].type == "skill":
 		_play_skill(index)
 		return
@@ -637,7 +666,7 @@ func _play_skill(index: int) -> void:
 	var card: Dictionary = hand[index]
 	var data: Dictionary = card_defs[card.name]
 	if data.type != "skill": return
-	if data.get("draw", 0) <= 0:
+	if data.get("draw", 0) <= 0 and data.get("toxins", 0) <= 0:
 		_log("%s: 아직 사용할 수 없는 스킬 효과입니다." % card.name)
 		return
 	if cost < data.cost:
@@ -651,9 +680,15 @@ func _play_skill(index: int) -> void:
 	cost -= data.cost
 	cards_used += 1
 	var hand_before := hand.size()
-	_draw_hand(data.draw)
+	_draw_hand(data.get("draw", 0))
 	discard_pile.append(card)
-	_log("%s 사용: 카드 %d장 드로우" % [card.name, hand.size() - hand_before])
+	if data.get("toxins", 0) > 0:
+		toxin_power += data.toxins
+		_log("%s 사용: 이번 웨이브 모든 유닛에게 #중독%d" % [card.name, data.toxins])
+	else:
+		_log("%s 사용: 카드 %d장 드로우" % [card.name, hand.size() - hand_before])
+	pending_skill_discards = mini(data.get("discard", 0), hand.size())
+	if pending_skill_discards > 0: _log("손패에서 버릴 카드 %d장을 선택하세요." % pending_skill_discards)
 	_refresh()
 
 func _select_party(index: int) -> void:
@@ -790,7 +825,7 @@ func _slot_pressed(lane: int, slot: int, is_room: bool) -> void:
 		var changed_room := true
 		if moving_soldier.source == "reserve":
 			changed_room = entry.get("origin_lane", lane) != lane or entry.get("origin_slot", slot) != slot
-		var move_cost := 1 if soldier.placed_round < round_number and changed_room else 0
+		var move_cost := 1 if soldier.placed_round < round_number and changed_room and not card_defs[soldier.name].get("versatile", false) else 0
 		if cost < move_cost:
 			_log("이전 라운드 병사를 다른 방으로 옮기려면 코스트 1이 필요합니다.")
 			return
@@ -896,10 +931,12 @@ func _refresh() -> void:
 	var displayed_phase := "대기 · 이벤트" if phase == "이벤트" else phase
 	summary.text = "%d / 20 라운드   |   %s   |   코스트 %d / %d   |   골드 %d   |   드로우 %d장 · 버린 더미 %d장" % [displayed_round, displayed_phase, cost, max_cost, gold, draw_pile.size(), discard_pile.size()]
 	if madness_relic: summary.text += "   |   유물: 광기의 집념"
+	if dragon_pendant: summary.text += "   |   유물: 용족의 팬던트"
 	if draw_penalty > 0: summary.text += "   |   턴 드로우 %d장" % maxi(0, 5 - draw_penalty)
 	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"아래 병사·함정 선택: 기존 제거 / 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭 · 기존 병사는 코스트 1", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 소모성 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
-	start_button.disabled = phase != "준비"
+	if pending_skill_discards > 0: status_label.text = "손패에서 버릴 카드 %d장을 선택하세요" % pending_skill_discards
+	start_button.disabled = phase != "준비" or pending_skill_discards > 0
 	_clear(party_box)
 	if phase in ["이벤트", "카드 보상", "보스 보상"]:
 		party_box.add_child(_label("다음 라운드 준비 시 적 정보가 표시됩니다.", 16))
@@ -1002,7 +1039,7 @@ func _refresh() -> void:
 		if data.get("bleed", 0) > 0: keyword_help += "#출혈: 대상이 피해를 입을 때 표시된 만큼 추가 피해를 입습니다.\n"
 		if data.get("unique", false): keyword_help += "#고유: 같은 병사가 배치 또는 휴식 중이면 배치할 수 없습니다.\n"
 		card_button.tooltip_text = keyword_help
-		if _unique_in_play(card.name):
+		if pending_skill_discards == 0 and _unique_in_play(card.name):
 			card_button.disabled = true
 		card_button.custom_minimum_size = Vector2(120, 158)
 		if card_icons.has(card.name):
@@ -1175,6 +1212,20 @@ func _clear_enemy_status(enemy: Dictionary) -> void:
 	enemy["attacks_since_cleanse"] = 0
 	_log("%s 상태 이상 회복" % enemy.name)
 
+func _soldier_attack(ally: Dictionary, party: Dictionary, taunters: Array) -> void:
+	var attack: int = _soldier_stats(ally.name).attack + soldier_bonus
+	if card_defs[ally.name].get("area_attack", false):
+		for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
+	else:
+		var living := _live_enemies(party)
+		var target := _single_target_enemy(living, card_defs[ally.name].get("targeting", "front"), taunters)
+		_soldier_hit_enemy(target, attack, ally)
+	var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
+	if lifesteal > 0:
+		var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
+		ally.hp += restored
+		if restored > 0: _log("%s #흡혈: 체력 %d 회복" % [ally.name, restored])
+
 func _fight(party: Dictionary, slot: int) -> void:
 	var soldiers: Array = lanes[party.lane].rooms[slot]
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
@@ -1198,18 +1249,16 @@ func _fight(party: Dictionary, slot: int) -> void:
 		for i in range(maxi(allies.size(), enemies.size())):
 			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
 				var ally: Dictionary = allies[i]
-				var attack: int = _soldier_stats(ally.name).attack + soldier_bonus
-				if card_defs[ally.name].get("area_attack", false):
-					for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
-				else:
-					var living := _live_enemies(party)
-					var target := _single_target_enemy(living, card_defs[ally.name].get("targeting", "front"), taunters)
-					_soldier_hit_enemy(target, attack, ally)
-				var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
-				if lifesteal > 0:
-					var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
-					ally.hp += restored
-					if restored > 0: _log("%s #흡혈: 체력 %d 회복" % [ally.name, restored])
+				if ally.get("poison", 0) > 0:
+					var poison_damage: int = mini(ally.hp, ally.poison)
+					ally.hp -= poison_damage
+					_log("%s #중독 %d 피해 (HP %d)" % [ally.name, poison_damage, ally.hp])
+					if ally.hp <= 0:
+						soldiers.erase(ally)
+						if phase == "웨이브": deaths_this_wave += 1
+						_log("%s 전사" % ally.name)
+				if ally.hp > 0:
+					_soldier_attack(ally, party, taunters)
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
@@ -1265,7 +1314,14 @@ func _fight(party: Dictionary, slot: int) -> void:
 			if enemy.get("cleanse_every", 0) > 0: _clear_enemy_status(enemy)
 
 func _start_wave() -> void:
-	if phase != "준비": return
+	if phase != "준비" or pending_skill_discards > 0: return
+	if toxin_power > 0:
+		for lane in lanes:
+			for room in lane.rooms:
+				for soldier in room: soldier["poison"] = soldier.get("poison", 0) + toxin_power
+		for entry in reserves: entry.soldier["poison"] = entry.soldier.get("poison", 0) + toxin_power
+		for party in parties:
+			for enemy in _live_enemies(party): enemy["poison"] = enemy.get("poison", 0) + toxin_power
 	showing_previous = false
 	_discard_hand()
 	deaths_this_wave = 0
@@ -1423,6 +1479,8 @@ func _eligible_events(event_round: int) -> Array:
 	var eligible: Array = []
 	for event_name in TEST_EVENTS:
 		if not seen_events.has(event_name): eligible.append(event_name)
+	if event_round >= 1 and event_round <= 10 and not seen_events.has(WOUNDED_EVENT): eligible.append(WOUNDED_EVENT)
+	if event_round >= 1 and event_round <= 20 and not seen_events.has(DRAGON_EVENT): eligible.append(DRAGON_EVENT)
 	if event_round >= 1 and event_round <= 10 and not seen_events.has(VAMPIRE_EVENT):
 		eligible.append(VAMPIRE_EVENT)
 	if event_round >= 10 and event_round <= 20 and not seen_events.has(MADNESS_EVENT):
@@ -1435,7 +1493,10 @@ func _random_event(eligible: Array, event_rng: RandomNumberGenerator = null):
 	return eligible[stream.randi_range(0, eligible.size() - 1)]
 
 func _start_card_event() -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식", DRAGON_EVENT]: return
+	if current_event == DRAGON_EVENT and not deck.any(func(card): return card_defs[card.name].get("unique_group", card.name) == "용인전사"):
+		_log("덱에 용인전사가 없습니다.")
+		return
 	if deck.is_empty() or (current_event == "강화 의식" and _research_candidates().is_empty()):
 		_log("덱에 선택할 카드가 없습니다.")
 		return
@@ -1456,37 +1517,50 @@ func _show_card_event_choices() -> void:
 	scroll.add_child(list)
 	for card in deck:
 		if current_event == "강화 의식" and card_defs[card.name].type != "soldier": continue
+		if current_event == DRAGON_EVENT and card_defs[card.name].get("unique_group", card.name) != "용인전사": continue
 		var label := "%s%s · 코스트 %d\n%s" % ["✓ " if card.id == selected_event_card else "", card.name, card_defs[card.name].cost, _display_card_description(card.name)]
 		list.add_child(_button(label, _select_event_card.bind(card.id)))
 	if selected_event_card >= 0:
-		var action := "선택한 카드 제거" if current_event == "넌 필요없어!!" else ("선택한 병사 강화" if current_event == "강화 의식" else "선택한 카드 무작위 변환")
+		var action := "용인전사 제거 · 드래곤 획득" if current_event == DRAGON_EVENT else ("선택한 카드 제거" if current_event == "넌 필요없어!!" else ("선택한 병사 강화" if current_event == "강화 의식" else "선택한 카드 무작위 변환"))
 		panel.add_child(_button(action, _finish_card_event))
 	panel.add_child(_button("취소", _cancel_card_event))
 
 func _select_event_card(card_id: int) -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식", DRAGON_EVENT]: return
 	if not deck.any(func(card): return card.id == card_id): return
 	if current_event == "강화 의식" and not _research_candidates().any(func(card): return card.id == card_id): return
+	if current_event == DRAGON_EVENT and not deck.any(func(card): return card.id == card_id and card_defs[card.name].get("unique_group", card.name) == "용인전사"): return
 	selected_event_card = card_id
 	_show_card_event_choices()
 
 func _cancel_card_event() -> void:
 	selected_event_card = -1
+	if current_event == DRAGON_EVENT:
+		_show_dragon_choices()
+		return
 	_clear(options_box)
 	var action := "카드 한 장 제거" if current_event == "넌 필요없어!!" else ("병사 한 장 선택해 강화 (0G)" if current_event == "강화 의식" else "카드 한 장 무작위 변환")
 	options_box.add_child(_button(action, _start_card_event))
 	options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 
 func _card_transform_candidates(old_name: String) -> Array:
-	return card_defs.keys().filter(func(name_value): return name_value != old_name and not _starter_only(name_value) and card_defs[name_value].type in ["soldier", "trap", "skill"])
+	return card_defs.keys().filter(func(name_value): return name_value != old_name and not _starter_only(name_value) and not card_defs[name_value].get("event_only", false) and card_defs[name_value].type in ["soldier", "trap", "skill"])
 
 func _finish_card_event() -> void:
-	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식"]: return
+	if phase != "이벤트" or current_event not in ["넌 필요없어!!", "그냥 처음에 보여준거로 해주세요", "강화 의식", DRAGON_EVENT]: return
 	var selected: Array = deck.filter(func(card): return card.id == selected_event_card)
 	if selected.size() != 1: return
 	var card: Dictionary = selected[0]
 	var old_name: String = card.name
-	if current_event == "강화 의식":
+	if current_event == DRAGON_EVENT:
+		if card_defs[card.name].get("unique_group", card.name) != "용인전사": return
+		deck.erase(card)
+		hand.erase(card)
+		draw_pile.erase(card)
+		discard_pile.erase(card)
+		_add_card("드래곤")
+		_log("용족의 비술: 용인전사 제거 · 드래곤 획득")
+	elif current_event == "강화 의식":
 		if not _apply_ritual(card.id): return
 	elif current_event == "넌 필요없어!!":
 		deck.erase(card)
@@ -1563,6 +1637,7 @@ func _finish_research() -> void:
 	for keyword in ["regen", "lifesteal", "poison", "bleed"]:
 		var amount: int = a.get(keyword, 0) + b.get(keyword, 0)
 		if amount > 0: result[keyword] = amount
+	if a.get("versatile", false) or b.get("versatile", false): result["versatile"] = true
 	if a.get("front_only", false) or b.get("front_only", false): result["front_only"] = true
 	if a.get("blur", false) or b.get("blur", false): result["blur"] = true
 	if a.get("area_attack", false) or b.get("area_attack", false): result["area_attack"] = true
@@ -1577,6 +1652,7 @@ func _finish_research() -> void:
 	if result.get("poison", 0) > 0: description += " #중독%d" % result.poison
 	if result.get("bleed", 0) > 0: description += " #출혈%d" % result.bleed
 	if result.get("front_only", false): description += " 선두 고정"
+	if result.get("versatile", false): description += " #만능 · 방 이동 무료"
 	if result.get("area_attack", false): description += "\n적 전체 공격"
 	if result.get("targeting", "") == "highest_attack": description += "\n최고 공격력 적 공격"
 	elif result.get("targeting", "") == "rear": description += "\n후열 적 공격"
@@ -1629,6 +1705,13 @@ func _apply_ritual(card_id: int) -> bool:
 	_log("강화 의식: %s 카드에 %s 부여" % [old_name, keyword_label])
 	return true
 
+func _show_dragon_choices() -> void:
+	_clear(options_box)
+	options_box.add_child(_label("용족이 거래를 제안합니다. 동족이 있다면 도와줄지도 모릅니다.", 15))
+	options_box.add_child(_button("용인전사를 드래곤으로 교환", _start_card_event))
+	options_box.add_child(_button("용족의 팬던트 획득 (50G)", _choose_event.bind("pendant")))
+	options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
+
 func _show_event() -> void:
 	var eligible := _eligible_events(round_number + 1)
 	pending_event = false
@@ -1642,7 +1725,13 @@ func _show_event() -> void:
 	current_event = event_name
 	event_index += 1
 	_clear(options_box)
-	if current_event == VAMPIRE_EVENT:
+	if current_event == WOUNDED_EVENT:
+		options_box.add_child(_label("상처 입은 모험가가 진짜인지 골드로 시험합니다.", 15))
+		options_box.add_child(_button("50G 미끼 · 50% 모험가 획득", _choose_event.bind("bait")))
+		options_box.add_child(_button("처치하고 30G 획득", _choose_event.bind("kill")))
+	elif current_event == DRAGON_EVENT:
+		_show_dragon_choices()
+	elif current_event == VAMPIRE_EVENT:
 		options_box.add_child(_button("녹티스 카드 영입 (30G · 임시)", _choose_event.bind("noctis")))
 		options_box.add_child(_button("돌아가기", _choose_event.bind("leave")))
 	else:
@@ -1658,10 +1747,18 @@ func _show_event() -> void:
 
 func _choose_event(choice: String) -> void:
 	if phase != "이벤트": return
-	if current_event == "흡혈귀와의 만남" and choice not in ["noctis", "leave"]: return
-	if current_event != VAMPIRE_EVENT:
+	if current_event == WOUNDED_EVENT and choice not in ["bait", "kill"]: return
+	if current_event == DRAGON_EVENT and choice not in ["pendant", "leave"]: return
+	if current_event == VAMPIRE_EVENT and choice not in ["noctis", "leave"]: return
+	if current_event not in [VAMPIRE_EVENT, WOUNDED_EVENT, DRAGON_EVENT]:
 		var allowed := {"강화 의식":"ritual", MADNESS_EVENT:"madness"}
 		if choice != "leave" and choice != allowed.get(current_event, ""): return
+	if choice == "bait" and gold < 50:
+		_log("골드가 부족합니다. 미끼에는 50G가 필요합니다.")
+		return
+	if choice == "pendant" and gold < 50:
+		_log("골드가 부족합니다. 용족의 팬던트에는 50G가 필요합니다.")
+		return
 	if choice == "noctis" and gold < NOCTIS_PRICE:
 		_log("골드가 부족합니다. 돌아가기를 선택하세요.")
 		return
@@ -1673,7 +1770,17 @@ func _choose_event(choice: String) -> void:
 			gold -= NOCTIS_PRICE
 			_add_card("녹티스")
 		"madness": _gain_madness_relic()
-	_log("이벤트 선택: " + {"noctis":"녹티스 카드 획득", "ritual":"강화 의식", "madness":"광기의 집념 획득", "leave":"돌아가기"}[choice])
+		"bait":
+			gold -= 50
+			if _seeded_rng("wounded_outcome", round_number + 1).randi_range(0, 1) == 0:
+				_add_card("모험가")
+				_log("상처입은 모험가: 시험 성공 · 모험가 카드 획득")
+			else: _log("상처입은 모험가: 시험 실패 · 50G 소모")
+		"kill": gold += 30
+		"pendant":
+			gold -= 50
+			dragon_pendant = true
+	_log("이벤트 선택: " + {"noctis":"녹티스 카드 획득", "ritual":"강화 의식", "madness":"광기의 집념 획득", "bait":"50G 미끼 사용", "kill":"30G 획득", "pendant":"용족의 팬던트 획득", "leave":"돌아가기"}[choice])
 	_clear(options_box)
 	_next_round()
 

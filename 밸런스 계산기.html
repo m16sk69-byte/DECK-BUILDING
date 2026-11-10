@@ -73,7 +73,7 @@ button:hover { background:#edf6f0 }
 <div class="field"><label for="bleed">#출혈</label><input id="bleed" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="bleed-hint">수치 1당 2점</small></div>
 <div class="field"><label for="regen">#재생</label><input id="regen" type="number" min="0" step="1" value="0" inputmode="numeric"><small id="regen-hint">수치 1당 0.5점</small></div>
 </div>
-<div class="checks"><label class="check"><input id="blur" type="checkbox"> <span id="blur-hint">#흐릿함 (+5점)</span></label><label class="check"><input id="unique" type="checkbox"> <span id="unique-hint">#고유 (0점)</span></label><label class="check"><input id="front" type="checkbox"> <span id="front-hint">선두 고정 (0점)</span></label><label class="check" id="rear-target-field" hidden><input id="rear-target" type="checkbox"> <span id="rear-target-hint">후열 공격 (+3점)</span></label><label class="check" id="high-target-field" hidden><input id="high-target" type="checkbox"> <span id="high-target-hint">최고 공격력 적 공격 (+3점)</span></label><label class="check"><input id="taunt" type="checkbox"> <span id="taunt-hint">#도발 (+10점)</span></label><label class="check"><input id="sword-boost" type="checkbox"> <span id="sword-boost-hint">검사 공격력 증가 (+10점)</span></label><label class="check"><input id="cleanse" type="checkbox"> <span id="cleanse-hint">알론드 상태 이상 회복 (+20점)</span></label></div>
+<div class="checks"><label class="check"><input id="blur" type="checkbox"> <span id="blur-hint">#흐릿함 (+5점)</span></label><label class="check"><input id="unique" type="checkbox"> <span id="unique-hint">#고유 (0점)</span></label><label class="check"><input id="front" type="checkbox"> <span id="front-hint">선두 고정 (0점)</span></label><label class="check"><input id="versatile" type="checkbox"> <span id="versatile-hint">#만능 (+5점)</span></label><label class="check" id="rear-target-field" hidden><input id="rear-target" type="checkbox"> <span id="rear-target-hint">후열 공격 (+3점)</span></label><label class="check" id="high-target-field" hidden><input id="high-target" type="checkbox"> <span id="high-target-hint">최고 공격력 적 공격 (+3점)</span></label><label class="check"><input id="taunt" type="checkbox"> <span id="taunt-hint">#도발 (+10점)</span></label><label class="check"><input id="sword-boost" type="checkbox"> <span id="sword-boost-hint">검사 공격력 증가 (+10점)</span></label><label class="check"><input id="cleanse" type="checkbox"> <span id="cleanse-hint">알론드 상태 이상 회복 (+20점)</span></label></div>
 </fieldset>
 <fieldset id="trap-fields" hidden><legend>함정 속성</legend><label class="check"><input id="consumable" type="checkbox"> <span id="consumable-hint">#소모성 (-10점)</span></label></fieldset>
 <div class="divider"></div>
@@ -110,6 +110,7 @@ button:hover { background:#edf6f0 }
 <div class="field"><label for="weight-blur">#흐릿함 점수</label><input id="weight-blur" type="number" step="any" value="5"></div>
 <div class="field"><label for="weight-unique">#고유 점수</label><input id="weight-unique" type="number" step="any" value="0"></div>
 <div class="field"><label for="weight-front">선두 고정 점수</label><input id="weight-front" type="number" step="any" value="0"></div>
+<div class="field"><label for="weight-versatile">#만능 점수</label><input id="weight-versatile" type="number" step="any" value="5"></div>
 <div class="field"><label for="weight-rear-target">아군의 후열 공격 점수</label><input id="weight-rear-target" type="number" step="any" value="3"></div>
 <div class="field"><label for="weight-high-target">아군의 최고 공격력 적 공격 점수</label><input id="weight-high-target" type="number" step="any" value="3"></div>
 <div class="field"><label for="weight-taunt">#도발 점수</label><input id="weight-taunt" type="number" step="any" value="10"></div>
@@ -125,8 +126,8 @@ button:hover { background:#edf6f0 }
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const ids = ["kind", "grade", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "rear-target", "high-target", "taunt", "sword-boost", "cleanse", "consumable", "extra"];
-  const defaults = { enemy:30, ally:20, "ally-upper":25, "ally-special":30, "ally-zero":10, "ally-upper-zero":12, "ally-special-zero":15, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, "rear-target":3, "high-target":3, taunt:10, "sword-boost":10, cleanse:20, "trap-base":3, "trap-extra":1, consumable:-10 };
+  const ids = ["kind", "grade", "cost", "health", "attack", "targets", "lifesteal", "poison", "bleed", "regen", "blur", "unique", "front", "versatile", "rear-target", "high-target", "taunt", "sword-boost", "cleanse", "consumable", "extra"];
+  const defaults = { enemy:30, ally:20, "ally-upper":25, "ally-special":30, "ally-zero":10, "ally-upper-zero":12, "ally-special-zero":15, health:1, attack:2, lifesteal:2, poison:1, bleed:2, regen:0.5, blur:5, unique:0, front:0, versatile:5, "rear-target":3, "high-target":3, taunt:10, "sword-boost":10, cleanse:20, "trap-base":3, "trap-extra":1, consumable:-10 };
   const storageKey = "deck-defense-balance-weights-v3";
   const previousStorageKey = "deck-defense-balance-weights-v2";
   const oldStorageKey = "deck-defense-balance-weights-v1";
@@ -185,7 +186,7 @@ button:hover { background:#edf6f0 }
     $("trap-fields").hidden = !trap;
     $("attack-label").textContent = trap ? "함정 피해" : "공격력";
     for (const id of ["lifesteal","poison","bleed","regen"]) $(id + "-hint").textContent = "수치 1당 " + format(weights[id]) + "점";
-    for (const [id, label] of [["blur","#흐릿함"],["unique","#고유"],["front","선두 고정"],["rear-target","후열 공격"],["high-target","최고 공격력 적 공격"],["taunt","#도발"],["sword-boost","검사 공격력 증가"],["cleanse","알론드 상태 이상 회복"],["consumable","#소모성"]]) {
+    for (const [id, label] of [["blur","#흐릿함"],["unique","#고유"],["front","선두 고정"],["versatile","#만능"],["rear-target","후열 공격"],["high-target","최고 공격력 적 공격"],["taunt","#도발"],["sword-boost","검사 공격력 증가"],["cleanse","알론드 상태 이상 회복"],["consumable","#소모성"]]) {
       $(id + "-hint").textContent = label + " (" + signedLabel(weights[id]) + ")";
     }
     $("unknown-note").textContent = trap
@@ -211,6 +212,7 @@ button:hover { background:#edf6f0 }
       if ($("blur").checked) rows.push(["#흐릿함", weights.blur]);
       if ($("unique").checked) rows.push(["#고유", weights.unique]);
       if ($("front").checked) rows.push(["선두 고정", weights.front]);
+      if ($("versatile").checked) rows.push(["#만능", weights.versatile]);
       if (kind === "ally" && $("rear-target").checked) rows.push(["후열 공격", weights["rear-target"]]);
       if (kind === "ally" && $("high-target").checked) rows.push(["최고 공격력 적 공격", weights["high-target"]]);
       if ($("taunt").checked) rows.push(["#도발", weights.taunt]);
@@ -284,7 +286,7 @@ button:hover { background:#edf6f0 }
     $("cost").value = "1";
     $("grade").value = "normal";
     $("targets").value = "1";
-    for (const id of ["blur", "unique", "front", "rear-target", "high-target", "taunt", "sword-boost", "cleanse", "consumable"]) $(id).checked = false;
+    for (const id of ["blur", "unique", "front", "versatile", "rear-target", "high-target", "taunt", "sword-boost", "cleanse", "consumable"]) $(id).checked = false;
     update();
   });
   showStorageStatus();
