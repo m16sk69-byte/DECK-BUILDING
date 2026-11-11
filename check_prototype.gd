@@ -24,7 +24,7 @@ func check() -> void:
 	game.card_defs.erase("강화 고블린 시험")
 	assert(not game.REWARDS.has("덱에 낙석 2장 추가"))
 	assert(game.gold == 30)
-	assert(game.card_icons.size() == 21 and game.music_player.stream != null)
+	assert(game.card_icons.has("서큐버스") and game.card_icons.has("독가스 함정") and game.music_player.stream != null)
 	assert(game.CARDS["고블린"].hp == 14 and game.CARDS["고블린"].attack == 3 and game.CARDS["고블린"].cost == 1)
 	assert(game.CARDS["고블린 궁수"].hp == 8 and game.CARDS["고블린 궁수"].attack == 6 and game.CARDS["고블린 궁수"].cost == 1)
 	assert(game.CARDS["오크"].hp == 30 and game.CARDS["오크"].attack == 5 and game.CARDS["오크"].cost == 2 and game.CARDS["오크"].front_only)

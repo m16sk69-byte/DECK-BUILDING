@@ -5,6 +5,7 @@ const CARDS = {
 	"가시": {"type":"trap", "slot":"바닥", "targeting":"front", "cost":1, "damage":6, "consumable":false, "description":"선두 1명 6 피해"},
 	"화살": {"type":"trap", "slot":"벽", "targeting":"rear", "cost":1, "damage":7, "consumable":true, "description":"#소모성\n후방 2명 각 7 피해"},
 	"낙석": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
+	"독가스 함정": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "poison":3, "consumable":true, "rarity":"상급", "description":"#소모성\n지나는 적 전체에 #중독3"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
@@ -13,6 +14,7 @@ const CARDS = {
 	"마법사": {"type":"soldier", "cost":2, "hp":14, "attack":4, "area_attack":true, "description":"HP 14 · 전체 4 피해"},
 	"모험가": {"type":"soldier", "cost":1, "hp":15, "attack":5, "unique":true, "event_only":true, "versatile":true, "rarity":"특급", "description":"HP 15 · 공격 5\n#이벤트 #고유 #만능 · 방 이동 무료"},
 	"용인전사": {"type":"soldier", "cost":1, "hp":15, "attack":5, "rarity":"상급", "description":"HP 15 · 공격 5"},
+	"서큐버스": {"type":"soldier", "cost":2, "hp":15, "attack":8, "targeting":"rear", "charm":true, "rarity":"상급", "description":"HP 15 · 공격 8\n#매혹 · 후방 공격 후 선두로 이동"},
 	"치명적인 독소": {"type":"skill", "cost":2, "toxins":5, "rarity":"특급", "description":"이번 웨이브의 모든 병사와 적에게 #중독5"},
 	"유연한 사고": {"type":"skill", "cost":1, "draw":2, "discard":1, "rarity":"상급", "description":"카드 2장 드로우 후 1장 버리기"},
 	"생존 본능": {"type":"skill", "cost":1, "hand_soldier_hp":10, "rarity":"특급", "event_only":true, "description":"손패의 병사 카드 체력 +10 (영구)\n#이벤트"},
@@ -41,7 +43,7 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 10:[["피
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "치명적인 독소", "유연한 사고"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "독가스 함정", "치명적인 독소", "유연한 사고"]
 const CARD_RARITY_WEIGHTS = {"일반":65, "상급":30, "특급":5}
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
@@ -158,7 +160,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "치명적인 독소", "유연한 사고", "생존 본능"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "독가스 함정", "치명적인 독소", "유연한 사고", "생존 본능"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "보스"]:
@@ -1144,6 +1146,7 @@ func _refresh() -> void:
 		if data.get("lifesteal", 0) > 0: keyword_help += "#흡혈: 공격할 때 표시된 만큼 회복합니다.\n"
 		if data.get("blur", false): keyword_help += "#흐릿함: 다른 병사가 있으면 단일 공격의 대상이 되지 않습니다.\n"
 		if data.get("poison", 0) > 0: keyword_help += "#중독: 대상이 행동할 때 표시된 만큼 피해를 입습니다.\n"
+		if data.get("charm", false): keyword_help += "#매혹: 공격 대상이 생존하면 적 진영의 선두로 이동합니다.\n"
 		if data.get("bleed", 0) > 0: keyword_help += "#출혈: 대상이 피해를 입을 때 표시된 만큼 추가 피해를 입습니다.\n"
 		if data.get("unique", false): keyword_help += "#고유: 같은 병사가 배치 또는 휴식 중이면 배치할 수 없습니다.\n"
 		card_button.tooltip_text = keyword_help
@@ -1323,8 +1326,14 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		trap.hits += 1
 		if card_defs[trap.name].get("consumable", false):
 			trap.active = false
-		var damage: int = card_defs[trap.name].damage + trap_bonus
-		var targeting: String = card_defs[trap.name].get("targeting", "front")
+		var trap_data: Dictionary = card_defs[trap.name]
+		var damage: int = trap_data.get("damage", 0) + (trap_bonus if trap_data.has("damage") else 0)
+		var targeting: String = trap_data.get("targeting", "front")
+		if trap_data.get("poison", 0) > 0:
+			for unit in targets:
+				unit["poison"] = unit.get("poison", 0) + trap_data.poison
+				_log("%s → %s #중독%d 적용" % [trap.name, unit.name, unit.poison])
+			continue
 		if targeting == "all":
 			for unit in targets: _damage_enemy(unit, damage, trap.name)
 		elif targeting == "rear":
@@ -1341,12 +1350,23 @@ func _clear_enemy_status(enemy: Dictionary) -> void:
 
 func _soldier_attack(ally: Dictionary, party: Dictionary, taunters: Array) -> void:
 	var attack: int = _soldier_stats(ally.name, {"hp_bonus":ally.get("base_hp_bonus", 0)}).attack + soldier_bonus
+	var charm_target: Dictionary = {}
 	if card_defs[ally.name].get("area_attack", false):
-		for enemy in _live_enemies(party): _soldier_hit_enemy(enemy, attack, ally)
+		var living := _live_enemies(party)
+		if card_defs[ally.name].get("charm", false) and not living.is_empty(): charm_target = living.back()
+		for enemy in living: _soldier_hit_enemy(enemy, attack, ally)
 	else:
 		var living := _live_enemies(party)
 		var target := _single_target_enemy(living, card_defs[ally.name].get("targeting", "front"), taunters)
 		_soldier_hit_enemy(target, attack, ally)
+		if card_defs[ally.name].get("charm", false): charm_target = target
+	if not charm_target.is_empty() and charm_target.hp > 0:
+		for index in range(party.units.size()):
+			if is_same(party.units[index], charm_target):
+				party.units.remove_at(index)
+				party.units.push_front(charm_target)
+				break
+		_log("%s #매혹: %s 선두로 이동" % [ally.name, charm_target.name])
 	var lifesteal: int = card_defs[ally.name].get("lifesteal", 0)
 	if lifesteal > 0:
 		var restored: int = mini(lifesteal, ally.max_hp - ally.hp)
@@ -1360,6 +1380,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 	_log("%s 경로 방 %d 전투 시작" % [_lane_name(party.lane), slot + 1])
 	var taunters: Array = []
 	var seen_states := {}
+	var has_charm := soldiers.any(func(unit): return card_defs[unit.name].get("charm", false))
 	# Snapshot both sides once per cycle; a unit killed before its slot cannot act.
 	while not soldiers.is_empty() and not _live_enemies(party).is_empty():
 		var state := JSON.stringify([soldiers, party.units, taunters])
@@ -1373,6 +1394,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 		seen_states[state] = true
 		var allies := soldiers.duplicate()
 		var enemies := _live_enemies(party).duplicate()
+		var acted_enemies: Array = []
 		for i in range(maxi(allies.size(), enemies.size())):
 			if i < allies.size() and allies[i].hp > 0 and not _live_enemies(party).is_empty():
 				var ally: Dictionary = allies[i]
@@ -1384,8 +1406,14 @@ func _fight(party: Dictionary, slot: int) -> void:
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token: return
-			if i < enemies.size() and enemies[i].hp > 0 and not soldiers.is_empty():
-				var enemy: Dictionary = enemies[i]
+			var enemy: Dictionary = {}
+			if i < enemies.size():
+				if has_charm:
+					var waiting_enemies := _live_enemies(party).filter(func(unit): return not acted_enemies.any(func(acted): return is_same(acted, unit)))
+					if not waiting_enemies.is_empty(): enemy = waiting_enemies.front()
+				elif enemies[i].hp > 0: enemy = enemies[i]
+			if not enemy.is_empty() and not soldiers.is_empty():
+				acted_enemies.append(enemy)
 				if enemy.get("cleanse_every", 0) > 0 and enemy.get("attacks_since_cleanse", 0) >= enemy.cleanse_every:
 					_clear_enemy_status(enemy)
 				if enemy.get("poison", 0) > 0:
@@ -1771,6 +1799,7 @@ func _finish_research() -> void:
 	if a.get("blur", false) or b.get("blur", false): result["blur"] = true
 	if a.get("area_attack", false) or b.get("area_attack", false): result["area_attack"] = true
 	if a.get("death_discount", false) or b.get("death_discount", false): result["death_discount"] = true
+	if a.get("charm", false) or b.get("charm", false): result["charm"] = true
 	var targets := [a.get("targeting", "front"), b.get("targeting", "front")]
 	if "highest_attack" in targets: result["targeting"] = "highest_attack"
 	elif "rear" in targets: result["targeting"] = "rear"
@@ -1786,6 +1815,7 @@ func _finish_research() -> void:
 	if result.get("targeting", "") == "highest_attack": description += "\n최고 공격력 적 공격"
 	elif result.get("targeting", "") == "rear": description += "\n후열 적 공격"
 	if result.get("death_discount", false): description += "\n직전 아군 전사당 비용 -1"
+	if result.get("charm", false): description += "\n#매혹 · 공격한 적을 선두로 이동"
 	result["description"] = description
 	card_defs[name_value] = result
 	card_icons[name_value] = card_icons["고블린"]

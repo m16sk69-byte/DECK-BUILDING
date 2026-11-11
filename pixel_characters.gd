@@ -146,6 +146,42 @@ const PATTERNS = {
 		"K..............K",
 		"................",
 	],
+	"서큐버스": [
+		"...K........K...",
+		"...KK......KK...",
+		"....KPKKKKPK....",
+		"...KPPPPPPPPK...",
+		"..KPPSSSSSSPPK..",
+		"..KPKSESS.ESKPK.",
+		"..KKKSSSSSSKKK..",
+		".....KSSSSK.....",
+		"..K.KPPPPPPK.K..",
+		".KPKPPPPPPPPKPK.",
+		".KKKPPYPPYPPKKK.",
+		"....KPPPPPPK....",
+		".....KPPPPK.....",
+		".....KPKKPK.....",
+		".....KK..KK.....",
+		"................",
+	],
+	"독가스 함정": [
+		"................",
+		".....KKKKKK.....",
+		"....KMMMMMMK....",
+		".....KGGGGK.....",
+		"......KGGK......",
+		"....KKGGGGKK....",
+		"...KGGGGGGGGK...",
+		"..KGGKGGGGKGGK..",
+		".KGGGGGGGGGGGGK.",
+		".KGGGGEGGEGGGGK.",
+		"..KGGGGGGGGGGK..",
+		"...KKGGGGGGKK...",
+		".....KKKKKK.....",
+		"................",
+		"................",
+		"................",
+	],
 }
 
 static func _base_kind(kind: String) -> String:
@@ -179,6 +215,8 @@ static func make_image(kind: String, enemy := false) -> Image:
 	if kind == "하피": palette["G"] = Color("e5b871")
 	if kind == "아라크네": palette["P"] = Color("866ca5")
 	if kind == "사령술사": palette["P"] = Color("685f88")
+	if kind == "서큐버스": palette["P"] = Color("dc81ae")
+	if kind == "독가스 함정": palette["G"] = Color("9acb70")
 	if enemy:
 		palette["B"] = Color("e67e70")
 		palette["G"] = Color("d9976f")

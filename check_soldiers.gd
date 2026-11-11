@@ -32,7 +32,7 @@ func check() -> void:
 		assert(data.cost == values[0] and data.hp == values[1] and data.attack == values[2] and data.rarity == values[3])
 		assert(game.ROUND_CARD_POOL.has(name_value))
 		assert(game.card_icons.has(name_value) and game.sprite_icons.has(name_value))
-	assert(not game.CARDS.has("서큐버스"))
+	assert(game.CARDS["서큐버스"].hp == 15 and game.CARDS["서큐버스"].attack == 8 and game.CARDS["서큐버스"].charm)
 	assert(game.CARDS["슬라임"].regen == 4)
 	assert(game.CARDS["드래곤"].area_attack and game.CARDS["사령술사"].area_attack)
 	assert(game.CARDS["하피"].targeting == "rear" and game.CARDS["아라크네"].targeting == "highest_attack")

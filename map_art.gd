@@ -48,6 +48,12 @@ func _trap(kind: String, at: Vector2, enabled: bool) -> void:
 			draw_colored_polygon(PackedVector2Array([at + Vector2(10, 0), at + Vector2(4, -4), at + Vector2(4, 4)]), c)
 		"낙석":
 			draw_colored_polygon(PackedVector2Array([at + Vector2(-9, 4), at + Vector2(-7, -6), at + Vector2(1, -9), at + Vector2(9, -4), at + Vector2(10, 5), at + Vector2(3, 7)]), c)
+		"독가스 함정":
+			draw_line(at + Vector2(-8, -8), at + Vector2(8, -8), c, 3)
+			var gas := Color("91cc78") if enabled else c
+			draw_circle(at + Vector2(-5, 2), 5, gas)
+			draw_circle(at + Vector2(4, 3), 6, gas)
+			draw_circle(at + Vector2(0, -2), 5, gas)
 
 func _orthogonal(from: Vector2, to: Vector2, color: Color, width: float) -> void:
 	var middle := (from.x + to.x) / 2.0
