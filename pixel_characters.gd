@@ -188,7 +188,7 @@ static func _base_kind(kind: String) -> String:
 	if kind == "고블린": return "검사"
 	if kind == "고블린 궁수": return "궁수"
 	if kind == "오크" or kind == "언데드 골렘": return "검사"
-	if kind == "녹티스" or kind == "회복술사" or kind == "사령술사": return "마법사"
+	if kind == "녹티스" or kind == "회복술사" or kind == "사령술사" or kind == "성녀": return "마법사"
 	if kind == "드래곤" or kind == "가고일": return "용"
 	if kind == "아라크네": return "거미"
 	if kind == "저격수" or kind == "피를 원하는자": return "궁수"
@@ -208,6 +208,7 @@ static func make_image(kind: String, enemy := false) -> Image:
 	if kind == "오크": palette["S"] = Color("70a86d")
 	if kind == "언데드 골렘": palette["S"] = Color("91aaa0")
 	if kind == "녹티스": palette["S"] = Color("e1d0dc")
+	if kind == "스켈레톤": palette["S"] = Color("e8e5ce")
 	if kind == "임프": palette["S"] = Color("e38c96")
 	if kind == "슬라임": palette["G"] = Color("80d8d0")
 	if kind == "가고일": palette["G"] = Color("8e9da9")

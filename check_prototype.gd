@@ -184,10 +184,10 @@ func check() -> void:
 			for party in game.parties:
 				assert(party.units.size() >= 1 and party.units.size() <= 4)
 				for unit in party.units:
-					total_cost += unit.enemy_cost
+					total_cost += unit.get("enemy_cost", 0)
 					if unit.get("requires_party", false): assert(party.units.size() >= 2)
 					if unit.name == "마법사": assert(test_round >= 6)
-				if test_round not in [5, 15] and party.units.size() > 1:
+				if test_round not in [5, 15, 20] and party.units.size() > 1:
 					var front_hp: int = party.units[0].max_hp
 					for unit in party.units: assert(front_hp >= unit.max_hp)
 					var rear_attack: int = party.units[-1].attack
@@ -507,9 +507,9 @@ func check() -> void:
 	# Vampire event eligibility, no repeats, and purchase with exact or insufficient funds.
 	game._new_game()
 	game.round_number = 9
-	assert(game._eligible_events(game.round_number).size() == 9 and not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 10 and not game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	game.round_number = 10
-	assert(game._eligible_events(game.round_number).size() == 10 and game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT) and game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
+	assert(game._eligible_events(game.round_number).size() == 11 and game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT) and game._eligible_events(game.round_number).has(game.MADNESS_EVENT))
 	assert(game._eligible_events(9).has(game.VAMPIRE_EVENT) and not game._eligible_events(9).has(game.MADNESS_EVENT))
 	assert(not game._eligible_events(11).has(game.VAMPIRE_EVENT) and game._eligible_events(11).has(game.MADNESS_EVENT))
 	# Check selection with the current and larger candidate pools.
@@ -525,7 +525,7 @@ func check() -> void:
 	assert(game._random_event([]) == null)
 	game.round_number = 9
 	game._show_event()
-	assert(not game._eligible_events(10).has(game.current_event) and game._eligible_events(10).size() == 9)
+	assert(not game._eligible_events(10).has(game.current_event) and game._eligible_events(10).size() == 10)
 	assert(game.summary.text.begins_with("10 / 20 라운드   |   대기 · 이벤트"))
 	game.round_number = 12
 	assert(not game._eligible_events(game.round_number).has(game.VAMPIRE_EVENT))
@@ -862,7 +862,7 @@ func check() -> void:
 	assert(game.phase == "이벤트" and game.summary.text.begins_with("19 / 20 라운드   |   대기 · 이벤트"))
 	assert(game.party_box.get_child_count() == 1)
 	var events_before_twenty: int = game.event_index
-	game._choose_event("leave")
+	game._choose_event("응원" if game.current_event == game.COUNT_EVENT else "leave")
 	assert(game.phase == "준비" and game.round_number == 19)
 	game._wave_won()
 	game._choose_card_reward("")
@@ -879,7 +879,7 @@ func check() -> void:
 			assert(game.offered_cards.size() == 3 and game.offered_cards.all(func(card_name): return game.ROUND_CARD_POOL.has(card_name)))
 			game._choose_card_reward("")
 			if round_index == 10: assert(game.phase == "이벤트")
-		if game.phase == "이벤트": game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else "leave")
+		if game.phase == "이벤트": game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else ("응원" if game.current_event == game.COUNT_EVENT else "leave"))
 	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index >= 5 and game.event_index <= 9)
 	assert(game.offered_cards.is_empty() and game.options_box.get_child_count() == 0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))

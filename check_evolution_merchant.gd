@@ -65,10 +65,11 @@ func check() -> void:
 	game._new_game(71)
 	game.phase = "이벤트"
 	game.current_event = game.MERCHANT_EVENT
-	game.gold = 300
-	for i in range(5):
+	game.gold = 450
+	for i in range(game.RELIC_POOL.size()):
 		game._choose_event("buy_relic")
-		assert(game.phase == "이벤트" and game.gold == 300 - (i + 1) * 50)
+		while game.phase == "카드 보상": game._choose_card_reward("")
+		assert(game.phase == "이벤트" and game.gold == 450 - (i + 1) * 50)
 	assert(game.RELIC_POOL.all(func(relic): return game._has_relic(relic)))
 	game._choose_event("buy_relic")
 	assert(game.gold == 50)

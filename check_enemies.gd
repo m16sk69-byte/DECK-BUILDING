@@ -52,17 +52,13 @@ func check() -> void:
 	game.round_number = 5
 	game._generate_parties()
 	assert(game.parties.size() == 1 and game.parties[0].units.map(func(unit): return unit.name) == ["기사", "동국의 검사", "저격수"])
-	# Round 20 uses the temporary boss and fills its three companion slots with eligible units.
+	# Round 20 uses the fixed hero party, with no arbitrary assigned enemy costs.
 	for seed_value in range(100):
 		game._generate_map(seed_value)
 		game.round_number = 20
 		game._generate_parties()
 		assert(game.parties.size() == 1 and game.parties[0].units.size() == 4)
-		var total := 0
-		for unit in game.parties[0].units:
-			total += unit.enemy_cost
-			assert(unit.name != "동국의 검사")
-		assert(total == 10)
+		assert(game.parties[0].units.map(func(unit): return unit.name) == ["전사", "용사", "성녀", "궁수"])
 	# Taunt starts with the shieldbearer's first attack, overriding front targeting.
 	game._new_game(123)
 	game.card_defs["고블린"].attack = 10
