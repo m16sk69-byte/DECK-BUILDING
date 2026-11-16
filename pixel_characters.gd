@@ -2,6 +2,18 @@ extends RefCounted
 
 # Original 16x16 placeholder pixel characters, shared by cards and the map.
 const PATTERNS = {
+	"폭발 룬": [
+		"................", ".......YY.......", "...Y...YY...Y...", "....Y..YY..Y....",
+		".....Y....Y.....", "..Y...YYYY...Y..", ".YY..YPPPPY..YY.", ".YY..YPPPPY..YY.",
+		"..Y...YYYY...Y..", ".....Y....Y.....", "....Y..YY..Y....", "...Y...YY...Y...",
+		".......YY.......", "................", "................", "................",
+	],
+	"가시 그물": [
+		".KKKKKKKKKKKKKK.", ".K...K...K...K..", "..K.K.K.K.K.K...", "...K...K...K....",
+		"..K.K.K.K.K.K...", ".K...K...K...K..", "..K.K.K.K.K.K...", "...K...K...K....",
+		"..K.K.K.K.K.K...", ".K...K...K...K..", ".M...M...M...M..", "..M...M...M...M.",
+		"..M...M...M...M.", "................", "................", "................",
+	],
 	"검사": [
 		"................",
 		".....KKKKKK.....",
@@ -192,7 +204,7 @@ static func _base_kind(kind: String) -> String:
 	if kind == "드래곤" or kind == "가고일": return "용"
 	if kind == "아라크네": return "거미"
 	if kind == "저격수" or kind == "피를 원하는자": return "궁수"
-	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스" or kind == "검신 알론드": return "검사"
+	if kind == "도적" or kind == "기사" or kind == "동국의 검사" or kind == "방패병" or kind == "검투사" or kind == "보스" or kind == "검신 알론드" or kind == "언데드 사냥꾼": return "검사"
 	return kind if PATTERNS.has(kind) else "검사"
 
 static func make_image(kind: String, enemy := false) -> Image:

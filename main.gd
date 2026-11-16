@@ -6,6 +6,8 @@ const CARDS = {
 	"화살": {"type":"trap", "slot":"벽", "targeting":"rear", "cost":1, "damage":7, "consumable":true, "description":"#소모성\n후방 2명 각 7 피해"},
 	"낙석": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "damage":8, "consumable":true, "description":"#소모성\n적 전체 각 8 피해"},
 	"독가스 함정": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "poison":3, "consumable":true, "rarity":"상급", "description":"#소모성\n지나는 적 전체에 #중독3"},
+	"폭발 룬": {"type":"trap", "slot":"바닥", "targeting":"front_two", "cost":1, "damage":7, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두부터 2명 각 7 피해"},
+	"가시 그물": {"type":"trap", "slot":"천장", "targeting":"front", "cost":1, "damage":4, "bleed":3, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두 1명 4 피해 · #출혈3"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
@@ -38,6 +40,7 @@ const ENEMY_TYPES = {
 	"동국의 검사": {"hp":60, "attack":10, "enemy_cost":3, "targeting":"front", "boss_only":true, "attack_count":0, "attack_boost_interval":3, "attack_boost":5, "description":"보스 파티 전용 · 세 번째 공격마다 공격력 +5 후 공격"},
 	"마법사": {"hp":15, "attack":9, "enemy_cost":2, "area_attack":true, "requires_party":true, "min_round":6, "description":"모든 병사 범위 공격 · 6라운드부터 · 혼자 등장 불가"},
 	"회복술사": {"hp":10, "attack":10, "enemy_cost":1, "heal":true, "heal_amount":5, "requires_party":true, "description":"공격 대신 체력이 부족한 아군을 5 회복 · 혼자 등장 불가"},
+	"언데드 사냥꾼": {"hp":34, "attack":8, "enemy_cost":2, "targeting":"front", "blocks_revive":true, "description":"살아서 방 통과 시 그 방 전투에서 전사한 #부활 병사의 부활 차단"},
 	"피에 굶주린자": {"hp":70, "attack":15, "enemy_cost":4, "targeting":"front", "boss_only":true, "inflicts_bleed":5, "description":"선두 병사 공격 · 공격 시 #출혈5"},
 	"피를 원하는자": {"hp":40, "attack":20, "enemy_cost":4, "targeting":"rear", "boss_only":true, "inflicts_bleed":5, "description":"후열 병사 우선 공격 · 공격 시 #출혈5"},
 	"검신 알론드": {"hp":200, "attack":40, "enemy_cost":10, "targeting":"front", "boss_only":true, "cleanse_every":3, "attacks_since_cleanse":0, "description":"3회 공격 후 다음 행동 전, 또는 방의 병사 전멸 시 상태 이상 회복"},
@@ -51,7 +54,7 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 10:[["피
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
 const CARD_RARITY_WEIGHTS = {"일반":65, "상급":30, "특급":5}
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
@@ -175,10 +178,10 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
-	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "보스", "용사", "전사", "궁수", "성녀"]:
+	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "언데드 사냥꾼", "보스", "용사", "전사", "궁수", "성녀"]:
 		sprite_icons["enemy_" + kind] = pixel_art.make_sprite(kind, true)
 	sprite_icons["enemy_피에 굶주린자"] = pixel_art.make_sprite("피에 굶주린자", true)
 	sprite_icons["enemy_피를 원하는자"] = pixel_art.make_sprite("피를 원하는자", true)
@@ -1399,6 +1402,12 @@ func _single_target_enemy(enemies: Array, targeting: String, taunters: Array) ->
 			if enemy.attack > chosen.attack: chosen = enemy
 	return chosen
 
+func _trap_hit_enemy(unit: Dictionary, damage: int, trap_name: String, trap_data: Dictionary) -> void:
+	_damage_enemy(unit, damage, trap_name)
+	if damage > 0 and unit.hp > 0 and trap_data.get("bleed", 0) > 0:
+		unit["bleed"] = unit.get("bleed", 0) + trap_data.bleed
+		_log("%s → %s #출혈%d 적용" % [trap_name, unit.name, unit.bleed])
+
 func _apply_traps(party: Dictionary, slot: int) -> void:
 	var traps: Array = lanes[party.lane].traps[slot]
 	var ordered: Array = []
@@ -1425,12 +1434,14 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 				_log("%s → %s #중독%d 적용" % [trap.name, unit.name, unit.poison])
 			continue
 		if targeting == "all":
-			for unit in targets: _damage_enemy(unit, damage, trap.name)
+			for unit in targets: _trap_hit_enemy(unit, damage, trap.name, trap_data)
+		elif targeting == "front_two":
+			for unit in targets.slice(0, 2): _trap_hit_enemy(unit, damage, trap.name, trap_data)
 		elif targeting == "rear":
 			for i in range(maxi(0, targets.size() - 2), targets.size()):
-				_damage_enemy(targets[i], damage, trap.name)
+				_trap_hit_enemy(targets[i], damage, trap.name, trap_data)
 		else:
-			_damage_enemy(targets.front(), damage, trap.name)
+			_trap_hit_enemy(targets.front(), damage, trap.name, trap_data)
 
 func _clear_enemy_status(enemy: Dictionary) -> void:
 	enemy.erase("poison")
@@ -1466,6 +1477,7 @@ func _soldier_attack(ally: Dictionary, party: Dictionary, taunters: Array) -> vo
 func _fight(party: Dictionary, slot: int) -> void:
 	var soldiers: Array = lanes[party.lane].rooms[slot]
 	if soldiers.is_empty() or _live_enemies(party).is_empty(): return
+	var fallen_before_fight := fallen_revivable.size()
 	var fight_token := wave_token
 	_log("%s 경로 방 %d 전투 시작" % [_lane_name(party.lane), slot + 1])
 	var taunters: Array = []
@@ -1552,6 +1564,12 @@ func _fight(party: Dictionary, slot: int) -> void:
 					if fight_token != wave_token: return
 			if soldiers.is_empty() or _live_enemies(party).is_empty(): break
 	if soldiers.is_empty():
+		if phase == "웨이브" and _live_enemies(party).any(func(enemy): return enemy.get("blocks_revive", false)):
+			for index in range(fallen_revivable.size() - 1, fallen_before_fight - 1, -1):
+				var entry: Dictionary = fallen_revivable[index]
+				if entry.lane == party.lane and entry.slot == slot:
+					fallen_revivable.remove_at(index)
+					_log("언데드 사냥꾼: %s 부활 차단" % entry.soldier.name)
 		for enemy in _live_enemies(party):
 			if enemy.get("cleanse_every", 0) > 0: _clear_enemy_status(enemy)
 

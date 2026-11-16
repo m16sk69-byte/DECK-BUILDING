@@ -54,6 +54,17 @@ func _trap(kind: String, at: Vector2, enabled: bool) -> void:
 			draw_circle(at + Vector2(-5, 2), 5, gas)
 			draw_circle(at + Vector2(4, 3), 6, gas)
 			draw_circle(at + Vector2(0, -2), 5, gas)
+		"폭발 룬":
+			draw_circle(at, 7, c)
+			draw_circle(at, 4, Color("142632"))
+			for direction in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+				draw_line(at + direction * 8, at + direction * 12, c, 2)
+		"가시 그물":
+			draw_line(at + Vector2(-10, -8), at + Vector2(10, -8), c, 2)
+			for x in [-7, 0, 7]:
+				draw_line(at + Vector2(x, -8), at + Vector2(x, 5), c, 1)
+				draw_line(at + Vector2(x - 2, 3), at + Vector2(x, 7), c, 2)
+			draw_line(at + Vector2(-8, -2), at + Vector2(8, -2), c, 1)
 
 func _orthogonal(from: Vector2, to: Vector2, color: Color, width: float) -> void:
 	var middle := (from.x + to.x) / 2.0
