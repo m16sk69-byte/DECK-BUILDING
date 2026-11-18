@@ -65,6 +65,14 @@ func _trap(kind: String, at: Vector2, enabled: bool) -> void:
 				draw_line(at + Vector2(x, -8), at + Vector2(x, 5), c, 1)
 				draw_line(at + Vector2(x - 2, 3), at + Vector2(x, 7), c, 2)
 			draw_line(at + Vector2(-8, -2), at + Vector2(8, -2), c, 1)
+		"작살함정":
+			draw_line(at + Vector2(-10, 6), at + Vector2(8, -6), c, 2)
+			draw_colored_polygon(PackedVector2Array([at + Vector2(11, -9), at + Vector2(3, -7), at + Vector2(8, -2)]), c)
+		"마법전이진":
+			var glow := Color("bb91e5") if enabled else c
+			draw_arc(at, 9, 0, TAU, 16, glow, 2)
+			draw_line(at + Vector2(-5, 0), at + Vector2(5, 0), glow, 2)
+			draw_line(at + Vector2(0, -5), at + Vector2(0, 5), glow, 2)
 
 func _orthogonal(from: Vector2, to: Vector2, color: Color, width: float) -> void:
 	var middle := (from.x + to.x) / 2.0
@@ -147,9 +155,14 @@ func _draw() -> void:
 		if party.done: continue
 		var at := entry + Vector2(-20 + i * 13, 0) if party.pos < 0 else Vector2(NODES[clampi(party.pos, 0, NODES.size() - 1)], _lane_y(party.lane))
 		if party.pos >= NODES.size(): at = goal - Vector2(35, 0)
-		var alive: Array = party.units.filter(func(unit): return unit.hp > 0)
+		var alive: Array = game._live_enemies(party)
 		if not alive.is_empty(): _figure(alive[0].name, at + Vector2(35, -4), true, 0.5)
 		_text(at + Vector2(32, -17), str(i + 1), 10, ENEMY)
+		for warp in party.get("warps", []):
+			if warp.state in ["waiting", "fighting"] and warp.unit.hp > 0:
+				var warp_at := Vector2(NODES[warp.pos], _lane_y(warp.lane))
+				_figure(warp.unit.name, warp_at + Vector2(30, -4), true, 0.5)
+				_text(warp_at + Vector2(20, -20), "전이", 10, GOLD)
 	_text(Vector2(14, 20), "◆ 방어선  |  노란 선: 선택한 파티의 전체 경로", 14, GOLD)
 	if game.phase == "웨이브" and not game.battle_notice.is_empty():
 		_text(Vector2(460, 20), game.battle_notice, 13, ENEMY)

@@ -8,6 +8,8 @@ const CARDS = {
 	"독가스 함정": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "poison":3, "consumable":true, "rarity":"상급", "description":"#소모성\n지나는 적 전체에 #중독3"},
 	"폭발 룬": {"type":"trap", "slot":"바닥", "targeting":"front_two", "cost":1, "damage":7, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두부터 2명 각 7 피해"},
 	"가시 그물": {"type":"trap", "slot":"천장", "targeting":"front", "cost":1, "damage":4, "bleed":3, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두 1명 4 피해 · #출혈3"},
+	"작살함정": {"type":"trap", "slot":"벽", "targeting":"second", "cost":1, "damage":6, "consumable":false, "rarity":"일반", "rarity_provisional":true, "description":"두 번째 적 1명 6 피해\n적 2명 이상일 때 발동"},
+	"마법전이진": {"type":"trap", "slot":"바닥", "targeting":"lowest_hp", "cost":2, "teleport_next_room":true, "consumable":false, "rarity":"상급", "rarity_provisional":true, "description":"체력이 가장 낮은 적 1명\n경로의 다음 방으로 전이"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
 	"고블린 궁수": {"type":"soldier", "cost":1, "hp":8, "attack":6, "description":"HP 8 · 선두 6 피해"},
 	"언데드 골렘": {"type":"soldier", "cost":3, "hp":30, "attack":4, "regen":10, "description":"HP 30 · 공격 4\n#재생10"},
@@ -56,7 +58,7 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 10:[["피
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "작살함정", "마법전이진", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
 const CARD_RARITY_WEIGHTS = {"일반":65, "상급":30, "특급":5}
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
@@ -180,7 +182,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "작살함정", "마법전이진", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "언데드 사냥꾼", "보스", "용사", "전사", "궁수", "성녀"]:
@@ -1143,6 +1145,7 @@ func _refresh() -> void:
 		var descriptions: Array[String] = []
 		for unit in party.units:
 			var detail: String = " · " + unit.description if unit.has("description") else ""
+			if unit.get("_warp_detached", false): detail += " · 전이 중"
 			descriptions.append("%s HP%d 공격%d%s" % [unit.name, unit.hp, _effective_enemy_attack(unit), detail])
 		var location := "처치" if party.done else "입구 대기"
 		if not party.done and party.pos >= MAP_STAGES.size(): location = "코어 도달"
@@ -1309,7 +1312,8 @@ func _refresh_enemy_details() -> void:
 		row.add_child(info)
 		var hp: int = maxi(0, unit.hp)
 		var max_hp: int = maxi(1, unit.get("max_hp", unit.hp))
-		info.add_child(_label("%s · 공격 %d%s" % [unit.name, _effective_enemy_attack(unit), " · 처치" if hp <= 0 else ""], 14))
+		var state := " · 처치" if hp <= 0 else (" · 전이 중" if unit.get("_warp_detached", false) else "")
+		info.add_child(_label("%s · 공격 %d%s" % [unit.name, _effective_enemy_attack(unit), state], 14))
 		var ability: String = unit.get("description", "선두 병사 공격")
 		var ability_label := _label("능력: " + ability, 13)
 		ability_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1377,7 +1381,64 @@ func _soldier_hit_enemy(unit: Dictionary, amount: int, ally: Dictionary) -> void
 			_log("%s에게 #%s%d 적용" % [unit.name, KEYWORD_NAMES[keyword], unit[keyword]])
 
 func _live_enemies(party: Dictionary) -> Array:
-	return party.units.filter(func(unit): return unit.hp > 0)
+	return party.units.filter(func(unit): return unit.hp > 0 and (party.get("warp_combat", false) or not unit.get("_warp_detached", false)))
+
+func _party_has_warp_survivors(party: Dictionary) -> bool:
+	return party.get("warps", []).any(func(warp): return warp.unit.hp > 0)
+
+func _next_route_room(party: Dictionary) -> Dictionary:
+	var start: int = party.get("pos", -1) + 1
+	for step in range(start, MAP_STAGES.size()):
+		var lane: int = party.route[step] if party.has("route") else party.lane
+		var stage: Dictionary = _map_stage(lane, step)
+		if stage.type == "room": return {"pos":step, "lane":lane, "slot":stage.slot}
+	return {}
+
+func _cell_occupied(lane: int, pos: int, own_party: Dictionary) -> bool:
+	for other in parties:
+		if not is_same(other, own_party) and not other.done and other.lane == lane and other.pos == pos: return true
+	return false
+
+func _erase_warp(party: Dictionary, target: Dictionary) -> void:
+	for index in range(party.get("warps", []).size()):
+		if is_same(party.warps[index], target):
+			party.warps.remove_at(index)
+			return
+
+func _resolve_warp(party: Dictionary, warp: Dictionary, token: int) -> void:
+	if warp.state != "pending" or _cell_occupied(warp.lane, warp.pos, party): return
+	var enemy: Dictionary = warp.unit
+	warp.state = "fighting"
+	_log("마법전이진: %s → %s 경로 방 %d" % [enemy.name, _lane_name(warp.lane), warp.slot + 1])
+	await _fight({"lane":warp.lane, "units":[enemy], "warp_combat":true}, warp.slot)
+	if token != wave_token or phase != "웨이브": return
+	if enemy.hp <= 0:
+		enemy.erase("_warp_detached")
+		_erase_warp(party, warp)
+		_log("전이된 %s 처치" % enemy.name)
+	else:
+		warp.state = "waiting"
+		_log("전이된 %s: 원래 파티를 기다림" % enemy.name)
+
+func _merge_warps_at(party: Dictionary, lane: int, pos: int) -> void:
+	for warp in party.get("warps", []).duplicate():
+		if warp.state == "waiting" and warp.lane == lane and warp.pos == pos:
+			warp.unit.erase("_warp_detached")
+			_erase_warp(party, warp)
+			_log("전이된 %s: 원래 파티와 합류" % warp.unit.name)
+
+func _promote_waiting_warps(party: Dictionary) -> bool:
+	var first: Dictionary = {}
+	for warp in party.get("warps", []):
+		if warp.state == "waiting" and warp.unit.hp > 0 and (first.is_empty() or warp.pos < first.pos): first = warp
+	if first.is_empty() or _cell_occupied(first.lane, first.pos, party): return false
+	for warp in party.get("warps", []):
+		if warp.state == "pending" and warp.pos <= first.pos: return false
+	party.pos = first.pos
+	party.lane = first.lane
+	_merge_warps_at(party, first.lane, first.pos)
+	_log("남은 파티가 없어 전이된 적이 단독으로 진행")
+	return true
 
 func _effective_enemy_attack(enemy: Dictionary) -> int:
 	return maxi(0, int(enemy.attack) - int(enemy.get("room_attack_down", 0)))
@@ -1430,12 +1491,29 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		if not trap.active: continue
 		var targets := _live_enemies(party)
 		if targets.is_empty(): break
-		trap.hits += 1
-		if card_defs[trap.name].get("consumable", false):
-			trap.active = false
 		var trap_data: Dictionary = card_defs[trap.name]
+		if trap_data.get("targeting", "front") == "second" and targets.size() < 2: continue
+		var destination := {}
+		if trap_data.get("teleport_next_room", false):
+			destination = _next_route_room(party)
+			if destination.is_empty(): continue
+		trap.hits += 1
+		if trap_data.get("consumable", false):
+			trap.active = false
 		var damage: int = trap_data.get("damage", 0) + (trap_bonus if trap_data.has("damage") else 0)
 		var targeting: String = trap_data.get("targeting", "front")
+		if trap_data.get("teleport_next_room", false):
+			var selected: Dictionary = targets[0]
+			for candidate in targets:
+				if candidate.hp < selected.hp: selected = candidate
+			selected["_warp_detached"] = true
+			var warp := {"unit":selected, "pos":destination.pos, "lane":destination.lane, "slot":destination.slot, "state":"pending"}
+			if not party.has("warps"): party["warps"] = []
+			party.warps.append(warp)
+			var token := wave_token
+			await _resolve_warp(party, warp, token)
+			if token != wave_token or phase != "웨이브": return
+			continue
 		if trap_data.get("poison", 0) > 0:
 			for unit in targets:
 				unit["poison"] = unit.get("poison", 0) + trap_data.poison
@@ -1445,6 +1523,8 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 			for unit in targets: _trap_hit_enemy(unit, damage, trap.name, trap_data)
 		elif targeting == "front_two":
 			for unit in targets.slice(0, 2): _trap_hit_enemy(unit, damage, trap.name, trap_data)
+		elif targeting == "second":
+			_trap_hit_enemy(targets[1], damage, trap.name, trap_data)
 		elif targeting == "rear":
 			for i in range(maxi(0, targets.size() - 2), targets.size()):
 				_trap_hit_enemy(targets[i], damage, trap.name, trap_data)
@@ -1620,28 +1700,40 @@ func _start_wave() -> void:
 			var party: Dictionary = parties[p]
 			if party.done: continue
 			remaining = true
+			for warp in party.get("warps", []).duplicate():
+				if warp.state == "pending":
+					await _resolve_warp(party, warp, my_token)
+					if my_token != wave_token or phase != "웨이브": return
+			if _live_enemies(party).is_empty():
+				if _promote_waiting_warps(party):
+					_refresh()
+					continue
+				if _party_has_warp_survivors(party): continue
+				party.done = true
+				_log("파티 %d 격파" % (p + 1))
+				continue
 			# Parties merging onto the same cell queue without overlapping.
 			var next_pos: int = party.pos + 1
+			if party.get("warps", []).any(func(warp): return warp.state == "pending" and warp.pos <= next_pos): continue
 			if next_pos >= MAP_STAGES.size():
 				party.pos = next_pos
 				_finish(false)
 				return
 			var next_lane: int = party.route[next_pos] if party.has("route") else party.lane
-			var occupied := false
-			for j in range(parties.size()):
-				if j != p and not parties[j].done and parties[j].lane == next_lane and parties[j].pos == next_pos:
-					occupied = true
-			if occupied: continue
+			if _cell_occupied(next_lane, next_pos, party): continue
 			party.pos = next_pos
 			party.lane = next_lane
 			var stage: Dictionary = _map_stage(next_lane, next_pos)
 			if stage.type != "path":
 				_log("파티 %d: %s 경로 %s %d" % [p + 1, _lane_name(next_lane), "통로" if stage.type == "trap" else "방", stage.slot + 1])
-			if stage.type == "trap": _apply_traps(party, stage.slot)
+			if stage.type == "trap":
+				await _apply_traps(party, stage.slot)
+				if my_token != wave_token or phase != "웨이브": return
 			elif stage.type == "room":
+				_merge_warps_at(party, next_lane, next_pos)
 				await _fight(party, stage.slot)
 				if my_token != wave_token or phase != "웨이브": return
-			if _live_enemies(party).is_empty():
+			if _live_enemies(party).is_empty() and not _party_has_warp_survivors(party):
 				party.done = true
 				_log("파티 %d 격파" % (p + 1))
 			_refresh()
