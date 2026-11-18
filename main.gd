@@ -18,6 +18,8 @@ const CARDS = {
 	"용인전사": {"type":"soldier", "cost":1, "hp":15, "attack":5, "rarity":"상급", "description":"HP 15 · 공격 5"},
 	"서큐버스": {"type":"soldier", "cost":2, "hp":15, "attack":8, "targeting":"rear", "charm":true, "rarity":"상급", "description":"HP 15 · 공격 8\n#매혹 · 후방 공격 후 선두로 이동"},
 	"스켈레톤": {"type":"soldier", "cost":2, "hp":10, "attack":8, "revive":true, "rarity":"상급", "rarity_provisional":true, "description":"HP 10 · 공격 8\n#부활 · 전사 후 다음 라운드 부활"},
+	"동굴박쥐": {"type":"soldier", "cost":1, "hp":5, "attack":5, "blur":true, "rarity":"일반", "description":"HP 5 · 공격 5\n#흐릿함"},
+	"포자술사": {"type":"soldier", "cost":1, "hp":8, "attack":3, "battle_start_attack_down":2, "rarity":"상급", "rarity_provisional":true, "description":"HP 8 · 공격 3\n방 전투 시작 시 적 전체 공격력 -2"},
 	"치명적인 독소": {"type":"skill", "cost":2, "toxins":5, "rarity":"특급", "description":"이번 웨이브의 모든 병사와 적에게 #중독5"},
 	"유연한 사고": {"type":"skill", "cost":1, "draw":2, "discard":1, "rarity":"상급", "description":"카드 2장 드로우 후 1장 버리기"},
 	"생존 본능": {"type":"skill", "cost":1, "hand_soldier_hp":10, "rarity":"특급", "event_only":true, "description":"손패의 병사 카드 체력 +10 (영구)\n#이벤트"},
@@ -54,7 +56,7 @@ const BOSS_PARTIES = {5:[["기사", "동국의 검사", "저격수"]], 10:[["피
 const COST_DRAW_RELIC = "유물(임시): 최대 코스트 +1 · 드로우 -1"
 const REWARDS = ["최대 코스트 +1", "모든 병사 공격력 +2", "모든 함정 피해 +2", "골드 +12", "모든 병사 체력 10 회복", "언데드 골렘 카드 획득", "최대 코스트 +2", "모든 병사 공격력 +1", COST_DRAW_RELIC]
 const STARTER_ONLY_CARDS = ["고블린", "고블린 궁수", "가시", "화살", "낙석"]
-const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
+const ROUND_CARD_POOL = ["오크", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "리트라이", "융자신청", "환경보호자금"]
 const CARD_RARITY_WEIGHTS = {"일반":65, "상급":30, "특급":5}
 const TEST_EVENTS = ["가능성 연구", "강화 의식", "넌 필요없어!!", "그냥 처음에 보여준거로 해주세요"]
 const MADNESS_EVENT = "살을주고 목을친다"
@@ -178,7 +180,7 @@ func _load_art() -> void:
 		if image.load_svg_from_string(svg) == OK:
 			card_icons[card_name] = ImageTexture.create_from_image(image)
 	var pixel_art = preload("res://pixel_characters.gd")
-	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
+	for kind in ["마법사", "고블린", "고블린 궁수", "언데드 골렘", "오크", "녹티스", "임프", "슬라임", "가고일", "드래곤", "하피", "사령술사", "아라크네", "모험가", "용인전사", "서큐버스", "스켈레톤", "동굴박쥐", "포자술사", "독가스 함정", "폭발 룬", "가시 그물", "치명적인 독소", "유연한 사고", "생존 본능", "리트라이", "융자신청", "환경보호자금"]:
 		card_icons[kind] = pixel_art.make_card(kind)
 		sprite_icons[kind] = pixel_art.make_sprite(kind)
 	for kind in ["도적", "방패병", "저격수", "기사", "동국의 검사", "검신 알론드", "마법사", "회복술사", "언데드 사냥꾼", "보스", "용사", "전사", "궁수", "성녀"]:
@@ -1141,7 +1143,7 @@ func _refresh() -> void:
 		var descriptions: Array[String] = []
 		for unit in party.units:
 			var detail: String = " · " + unit.description if unit.has("description") else ""
-			descriptions.append("%s HP%d 공격%d%s" % [unit.name, unit.hp, unit.attack, detail])
+			descriptions.append("%s HP%d 공격%d%s" % [unit.name, unit.hp, _effective_enemy_attack(unit), detail])
 		var location := "처치" if party.done else "입구 대기"
 		if not party.done and party.pos >= MAP_STAGES.size(): location = "코어 도달"
 		if not party.done and party.pos >= 0 and party.pos < MAP_STAGES.size():
@@ -1307,7 +1309,7 @@ func _refresh_enemy_details() -> void:
 		row.add_child(info)
 		var hp: int = maxi(0, unit.hp)
 		var max_hp: int = maxi(1, unit.get("max_hp", unit.hp))
-		info.add_child(_label("%s · 공격 %d%s" % [unit.name, unit.attack, " · 처치" if hp <= 0 else ""], 14))
+		info.add_child(_label("%s · 공격 %d%s" % [unit.name, _effective_enemy_attack(unit), " · 처치" if hp <= 0 else ""], 14))
 		var ability: String = unit.get("description", "선두 병사 공격")
 		var ability_label := _label("능력: " + ability, 13)
 		ability_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1377,6 +1379,12 @@ func _soldier_hit_enemy(unit: Dictionary, amount: int, ally: Dictionary) -> void
 func _live_enemies(party: Dictionary) -> Array:
 	return party.units.filter(func(unit): return unit.hp > 0)
 
+func _effective_enemy_attack(enemy: Dictionary) -> int:
+	return maxi(0, int(enemy.attack) - int(enemy.get("room_attack_down", 0)))
+
+func _clear_room_attack_down(party: Dictionary) -> void:
+	for enemy in party.units: enemy.erase("room_attack_down")
+
 func _single_target_soldier(soldiers: Array, targeting := "front") -> Dictionary:
 	var candidates: Array = []
 	for soldier in soldiers:
@@ -1399,7 +1407,7 @@ func _single_target_enemy(enemies: Array, targeting: String, taunters: Array) ->
 	var chosen: Dictionary = enemies.front()
 	if targeting == "highest_attack":
 		for enemy in enemies:
-			if enemy.attack > chosen.attack: chosen = enemy
+			if _effective_enemy_attack(enemy) > _effective_enemy_attack(chosen): chosen = enemy
 	return chosen
 
 func _trap_hit_enemy(unit: Dictionary, damage: int, trap_name: String, trap_data: Dictionary) -> void:
@@ -1480,6 +1488,12 @@ func _fight(party: Dictionary, slot: int) -> void:
 	var fallen_before_fight := fallen_revivable.size()
 	var fight_token := wave_token
 	_log("%s 경로 방 %d 전투 시작" % [_lane_name(party.lane), slot + 1])
+	var attack_down := 0
+	for soldier in soldiers:
+		if soldier.hp > 0: attack_down += int(card_defs[soldier.name].get("battle_start_attack_down", 0))
+	if attack_down > 0:
+		for enemy in _live_enemies(party): enemy["room_attack_down"] = attack_down
+		_log("포자술사: 이번 방 전투에서 적 전체 공격력 -%d" % attack_down)
 	var taunters: Array = []
 	var seen_states := {}
 	var has_charm := soldiers.any(func(unit): return card_defs[unit.name].get("charm", false))
@@ -1488,6 +1502,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 		var state := JSON.stringify([soldiers, party.units, taunters])
 		if seen_states.has(state):
 			_log("전투 교착: 회복과 공격이 반복되어 전투를 진행할 수 없습니다.")
+			_clear_room_attack_down(party)
 			if phase == "웨이브":
 				phase = "교착"
 				battle_notice = "전투 교착 · 새 게임으로 다시 시작"
@@ -1507,7 +1522,9 @@ func _fight(party: Dictionary, slot: int) -> void:
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
-					if fight_token != wave_token: return
+					if fight_token != wave_token:
+						_clear_room_attack_down(party)
+						return
 			var enemy: Dictionary = {}
 			if i < enemies.size():
 				if has_charm:
@@ -1526,7 +1543,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 					enemy["attack_count"] = enemy.get("attack_count", 0) + 1
 					if enemy.attack_count % interval == 0:
 						enemy.attack += enemy.get("attack_boost", 0)
-						_log("%s 공격력 +%d (공격력 %d)" % [enemy.name, enemy.attack_boost, enemy.attack])
+						_log("%s 공격력 +%d (공격력 %d)" % [enemy.name, enemy.attack_boost, _effective_enemy_attack(enemy)])
 				if enemy.get("heal_all", false):
 					for friend in _live_enemies(party):
 						var restored: int = mini(enemy.attack, friend.max_hp - friend.hp)
@@ -1554,14 +1571,17 @@ func _fight(party: Dictionary, slot: int) -> void:
 						enemy["attacks_since_cleanse"] = enemy.get("attacks_since_cleanse", 0) + 1
 					var targets: Array = soldiers.duplicate() if enemy.get("area_attack", false) else [_single_target_soldier(soldiers, enemy.get("targeting", "front"))]
 					for target in targets:
-						_damage_soldier(target, enemy.attack, enemy.name, soldiers)
-						if target.hp > 0 and enemy.attack > 0 and enemy.get("inflicts_bleed", 0) > 0:
+						var attack_value := _effective_enemy_attack(enemy)
+						_damage_soldier(target, attack_value, enemy.name, soldiers)
+						if target.hp > 0 and attack_value > 0 and enemy.get("inflicts_bleed", 0) > 0:
 							target["bleed"] = target.get("bleed", 0) + enemy.inflicts_bleed
 							_log("%s에게 #출혈%d 적용" % [target.name, target.bleed])
 				if phase == "웨이브":
 					_refresh()
 					await get_tree().create_timer(speed * 0.7).timeout
-					if fight_token != wave_token: return
+					if fight_token != wave_token:
+						_clear_room_attack_down(party)
+						return
 			if soldiers.is_empty() or _live_enemies(party).is_empty(): break
 	if soldiers.is_empty():
 		if phase == "웨이브" and _live_enemies(party).any(func(enemy): return enemy.get("blocks_revive", false)):
@@ -1572,6 +1592,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 					_log("언데드 사냥꾼: %s 부활 차단" % entry.soldier.name)
 		for enemy in _live_enemies(party):
 			if enemy.get("cleanse_every", 0) > 0: _clear_enemy_status(enemy)
+	_clear_room_attack_down(party)
 
 func _start_wave() -> void:
 	if phase != "준비" or pending_skill_discards > 0: return
@@ -1936,6 +1957,8 @@ func _finish_research() -> void:
 	if a.get("death_discount", false) or b.get("death_discount", false): result["death_discount"] = true
 	if a.get("charm", false) or b.get("charm", false): result["charm"] = true
 	if a.get("revive", false) or b.get("revive", false): result["revive"] = true
+	var attack_down: int = int(a.get("battle_start_attack_down", 0)) + int(b.get("battle_start_attack_down", 0))
+	if attack_down > 0: result["battle_start_attack_down"] = attack_down
 	var targets := [a.get("targeting", "front"), b.get("targeting", "front")]
 	if "highest_attack" in targets: result["targeting"] = "highest_attack"
 	elif "rear" in targets: result["targeting"] = "rear"
@@ -1953,6 +1976,7 @@ func _finish_research() -> void:
 	if result.get("death_discount", false): description += "\n직전 아군 전사당 비용 -1"
 	if result.get("charm", false): description += "\n#매혹 · 공격한 적을 선두로 이동"
 	if result.get("revive", false): description += "\n#부활 · 전사 후 다음 라운드 부활"
+	if attack_down > 0: description += "\n방 전투 시작 시 적 전체 공격력 -%d" % attack_down
 	result["description"] = description
 	card_defs[name_value] = result
 	card_icons[name_value] = card_icons["고블린"]

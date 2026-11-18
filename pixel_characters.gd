@@ -2,6 +2,18 @@ extends RefCounted
 
 # Original 16x16 placeholder pixel characters, shared by cards and the map.
 const PATTERNS = {
+	"동굴박쥐": [
+		"................", "..K..........K..", ".KPK........KPK.", ".KPPK..KK..KPPK.",
+		".KPPPKKPPKKPPPK.", ".KPPPPPPPPPPPPK.", "..KPP.EP.EPPPK..", "...KPPPPPPPPK...",
+		"....KKPPPPKK....", "....K.KPPK.K....", "...K...KK...K...", "................",
+		"................", "................", "................", "................",
+	],
+	"포자술사": [
+		"......YY........", "....YYGGYY......", "...YGGGGGGY.....", "..YGGYGGYGGY....",
+		"..YGGGGGGGGY....", "...YYYYYYYY.....", "....KSESSEK.....", "....KSSSSSK..G..",
+		".....KSSSK..GGG.", "....KPPPPPK..G..", "...KPPPPPPPK.G..", "...KPPYPPPPK.G..",
+		"....KPPPPPK..G..", "....KPPPPPK..G..", "....KPK.KPK.....", "....KK...KK.....",
+	],
 	"폭발 룬": [
 		"................", ".......YY.......", "...Y...YY...Y...", "....Y..YY..Y....",
 		".....Y....Y.....", "..Y...YYYY...Y..", ".YY..YPPPPY..YY.", ".YY..YPPPPY..YY.",
