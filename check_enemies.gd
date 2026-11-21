@@ -21,6 +21,7 @@ func check() -> void:
 			var names: Array = []
 			for party in game.parties:
 				assert(party.units.size() >= 1 and party.units.size() <= 4)
+				assert(not party.units.all(func(unit): return unit.name == "회복술사"))
 				for unit in party.units:
 					total += unit.enemy_cost
 					names.append(unit.name)

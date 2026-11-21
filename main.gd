@@ -83,6 +83,7 @@ const MAP_STAGES = [
 	{"type":"room", "slot":2}, {"type":"trap", "slot":4},
 ]
 var rng := RandomNumberGenerator.new()
+var simulation_fast := false
 var seed_rng := RandomNumberGenerator.new()
 var chaos_rng := RandomNumberGenerator.new()
 var card_defs: Dictionary = CARDS.duplicate(true)
@@ -705,6 +706,7 @@ func _generate_enemy_group(budget: int, slots: int, stream: RandomNumberGenerato
 			var price: int = data.enemy_cost
 			if price > remaining or remaining - price > slots_after * max_unit_cost: continue
 			if data.get("requires_party", false) and units.is_empty() and not has_companion and remaining - price < 1: continue
+			if role == "회복술사" and not has_companion and units.all(func(unit): return unit.name == "회복술사") and (remaining == price or slots_after == 0): continue
 			candidates.append(role)
 		if candidates.is_empty(): break
 		var role: String = candidates[stream.randi_range(0, candidates.size() - 1)]
@@ -1601,7 +1603,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 					_soldier_attack(ally, party, taunters)
 				if phase == "웨이브":
 					_refresh()
-					await get_tree().create_timer(speed * 0.7).timeout
+					if not simulation_fast: await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token:
 						_clear_room_attack_down(party)
 						return
@@ -1658,7 +1660,7 @@ func _fight(party: Dictionary, slot: int) -> void:
 							_log("%s에게 #출혈%d 적용" % [target.name, target.bleed])
 				if phase == "웨이브":
 					_refresh()
-					await get_tree().create_timer(speed * 0.7).timeout
+					if not simulation_fast: await get_tree().create_timer(speed * 0.7).timeout
 					if fight_token != wave_token:
 						_clear_room_attack_down(party)
 						return
@@ -1737,7 +1739,7 @@ func _start_wave() -> void:
 				party.done = true
 				_log("파티 %d 격파" % (p + 1))
 			_refresh()
-			await get_tree().create_timer(speed).timeout
+			if not simulation_fast: await get_tree().create_timer(speed).timeout
 			if my_token != wave_token: return
 		if not remaining: break
 	_wave_won()
