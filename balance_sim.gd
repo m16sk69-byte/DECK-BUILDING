@@ -83,7 +83,7 @@ func decide_event(profile: int) -> String:
 	var event: String = game.current_event
 	var choice := "leave"
 	match event:
-		game.WOUNDED_EVENT: choice = "bait" if profile == 1 and game.gold >= 50 else "kill"
+		game.WOUNDED_EVENT: choice = "bait" if profile == 1 and game.gold >= game.BAIT_PRICE else "kill"
 		game.VAMPIRE_EVENT: choice = "noctis" if game.gold >= game.NOCTIS_PRICE and not game._unique_in_play("녹티스") else "leave"
 		game.COUNT_EVENT:
 			var choices := ["응원", "증원", "염원"].filter(func(r): return not game._has_relic(r))
@@ -97,7 +97,7 @@ func decide_event(profile: int) -> String:
 			choice = "leave"
 		"강화 의식":
 			var candidates: Array = game._research_candidates()
-			if profile == 1 and not candidates.is_empty():
+			if profile == 1 and game.gold >= game.RITUAL_PRICE and not candidates.is_empty():
 				game._choose_event("ritual")
 				game.selected_event_card = candidates[0].id
 				game._finish_card_event()
@@ -114,6 +114,8 @@ func decide_event(profile: int) -> String:
 				game.research_selected = [candidates[0].id, candidates[1].id]
 				game._finish_research()
 				return "fusion"
+		"작전 회의": choice = "early_draw"
+		"맞춤 준비", "긴급 보급", "덱 정리": choice = "early_gold"
 	game._choose_event(choice)
 	return choice
 

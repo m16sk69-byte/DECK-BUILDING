@@ -13,7 +13,7 @@ func check() -> void:
 	assert(game.ROUND_CARD_POOL.has("용인전사") and game.ROUND_CARD_POOL.has("유연한 사고") and game.ROUND_CARD_POOL.has("치명적인 독소"))
 	assert(game._eligible_events(9).has(game.WOUNDED_EVENT) and not game._eligible_events(11).has(game.WOUNDED_EVENT))
 	assert(game._eligible_events(3).has(game.DRAGON_EVENT) and game._eligible_events(19).has(game.DRAGON_EVENT))
-	# Bait consumes 50 gold in both outcomes, and both seeded outcomes exist.
+	# Bait consumes 10 gold in both outcomes, and both seeded outcomes exist.
 	var outcomes := {}
 	for seed_value in range(1, 50):
 		game._new_game(seed_value)
@@ -22,10 +22,10 @@ func check() -> void:
 		if outcomes.has(roll): continue
 		game.phase = "이벤트"
 		game.current_event = game.WOUNDED_EVENT
-		game.gold = 49
+		game.gold = 9
 		game._choose_event("bait")
-		assert(game.phase == "이벤트" and game.gold == 49)
-		game.gold = 50
+		assert(game.phase == "이벤트" and game.gold == 9)
+		game.gold = 10
 		game._choose_event("bait")
 		assert(game.gold == 0 and game.phase == "준비")
 		assert(game.deck.any(func(card): return card.name == "모험가") == (roll == 0))

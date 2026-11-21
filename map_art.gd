@@ -38,6 +38,9 @@ func _figure(kind: String, at: Vector2, enemy := false, scale_value := 1.0) -> v
 func _trap(kind: String, at: Vector2, enabled: bool) -> void:
 	var c := Color("e1c786") if enabled else Color("68777e")
 	match kind:
+		"치유 봉인 룬":
+			draw_circle(at, 8, c)
+			draw_line(at + Vector2(-5, -5), at + Vector2(5, 5), Color("762f46"), 3)
 		"가시":
 			draw_line(at + Vector2(-9, 6), at + Vector2(9, 6), c, 2)
 			for k in range(3):

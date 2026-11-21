@@ -310,7 +310,7 @@ func check() -> void:
 	assert(game.phase == "이벤트" and game.reserves[0].healed and survivor.hp == 21)
 	assert(game.reserves[1].healed and nearly_full.hp == 14)
 	assert(game.lanes[1].rooms[0].is_empty() and game.deck.size() == before)
-	game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else "leave")
+	game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else ("early_gold" if game.current_event in game.EARLY_EVENTS else "leave"))
 	assert(game.round_number == 3)
 	game._reserve_pressed(0)
 	game._slot_pressed(1, 0, true)
@@ -616,7 +616,7 @@ func check() -> void:
 	game.deck = [unique_card]
 	game.phase = "이벤트"
 	game.current_event = "강화 의식"
-	game.gold = 0
+	game.gold = 30
 	game._choose_event("ritual")
 	assert(game.selected_event_card == -1 and unique_card.name == "녹티스")
 	game._select_event_card(unique_card.id)
@@ -879,7 +879,7 @@ func check() -> void:
 			assert(game.offered_cards.size() == 3 and game.offered_cards.all(func(card_name): return game.ROUND_CARD_POOL.has(card_name)))
 			game._choose_card_reward("")
 			if round_index == 10: assert(game.phase == "이벤트")
-		if game.phase == "이벤트": game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else ("응원" if game.current_event == game.COUNT_EVENT else "leave"))
+		if game.phase == "이벤트": game._choose_event("kill" if game.current_event == game.WOUNDED_EVENT else ("응원" if game.current_event == game.COUNT_EVENT else ("early_gold" if game.current_event in game.EARLY_EVENTS else "leave")))
 	assert(game.phase == "클리어" and game.round_number == 20 and game.event_index >= 5 and game.event_index <= 9)
 	assert(game.offered_cards.is_empty() and game.options_box.get_child_count() == 0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(game.record_path))
