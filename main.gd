@@ -232,29 +232,65 @@ func _label(value: String, size := 16) -> Label:
 	var label := Label.new()
 	label.text = value
 	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", Color("f5e7c9"))
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
+
+func _panel_style(color: Color, border: Color, padding := 10) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = border
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = padding
+	style.content_margin_right = padding
+	style.content_margin_top = padding
+	style.content_margin_bottom = padding
+	return style
 
 func _button(value: String, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = value
 	button.custom_minimum_size = Vector2(105, 44)
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color("243747")
-	normal.border_color = Color("537282")
-	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(5)
-	normal.content_margin_left = 5
-	normal.content_margin_right = 5
-	normal.content_margin_top = 6
-	normal.content_margin_bottom = 6
+	var normal := _panel_style(Color("30302b"), Color("8f7650"), 6)
 	var hover: StyleBoxFlat = normal.duplicate()
-	hover.bg_color = Color("345469")
+	hover.bg_color = Color("55503b")
+	hover.border_color = Color("e7bc70")
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = Color("665238")
+	pressed.border_color = Color("f1ce80")
+	var disabled: StyleBoxFlat = normal.duplicate()
+	disabled.bg_color = Color("292a29")
+	disabled.border_color = Color("56534a")
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_color_override("font_color", Color("f7e7c6"))
+	button.add_theme_color_override("font_hover_color", Color("fff2c7"))
+	button.add_theme_color_override("font_disabled_color", Color("96928a"))
 	button.pressed.connect(callback)
 	return button
+
+func _style_card(button: Button, kind: String, selected: bool) -> void:
+	var colors := {"soldier": Color("3b5849"), "trap": Color("654a37"), "skill": Color("454d67")}
+	var border := Color("f1cc78") if selected else Color("b49662")
+	var normal := _panel_style(colors.get(kind, Color("4d4940")), border, 8)
+	normal.set_corner_radius_all(9)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = normal.bg_color.lightened(0.16)
+	hover.border_color = Color("ffe5a2")
+	var pressed: StyleBoxFlat = hover.duplicate()
+	pressed.bg_color = normal.bg_color.darkened(0.12)
+	var disabled: StyleBoxFlat = normal.duplicate()
+	disabled.bg_color = Color("303332")
+	disabled.border_color = Color("676153")
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_font_size_override("font_size", 15)
 
 func _clear(node: Node) -> void:
 	for child in node.get_children():
@@ -263,9 +299,24 @@ func _clear(node: Node) -> void:
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color("101a24")
+	bg.color = Color("241e1c")
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
+	var background_image := Image.new()
+	if background_image.load("res://assets/dungeon_command_background.png") == OK:
+		var background := TextureRect.new()
+		background.texture = ImageTexture.create_from_image(background_image)
+		background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(background)
+	var shade := ColorRect.new()
+	shade.color = Color(0.04, 0.035, 0.03, 0.62)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(shade)
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(scroll)
@@ -279,11 +330,20 @@ func _build_ui() -> void:
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_theme_constant_override("separation", 9)
 	margin.add_child(root)
-	root.add_child(_label("덱빌딩 디펜스  |  라운드 프로토타입", 27))
+	var header := PanelContainer.new()
+	header.add_theme_stylebox_override("panel", _panel_style(Color(0.11, 0.10, 0.09, 0.9), Color("92744d"), 10))
+	root.add_child(header)
+	var header_content := VBoxContainer.new()
+	header_content.add_theme_constant_override("separation", 4)
+	header.add_child(header_content)
+	var heading := _label("던전 방어선   ◆   덱빌딩 디펜스", 25)
+	heading.add_theme_color_override("font_color", Color("f5d899"))
+	header_content.add_child(heading)
 	summary = _label("", 19)
-	root.add_child(summary)
+	header_content.add_child(summary)
 	status_label = _label("", 16)
-	root.add_child(status_label)
+	status_label.add_theme_color_override("font_color", Color("d1c3a7"))
+	header_content.add_child(status_label)
 	var seed_row := HBoxContainer.new()
 	root.add_child(seed_row)
 	var seed_label := _label("게임 시드:", 15)
@@ -312,6 +372,8 @@ func _build_ui() -> void:
 	action_box.add_child(_button("함정 재장전", _set_mode.bind("rearm")))
 	action_box.add_child(_button("함정 순서", _set_mode.bind("trap_order")))
 	start_button = _button("웨이브 시작", _start_wave)
+	var start_style := _panel_style(Color("77532e"), Color("dfb96f"), 6)
+	start_button.add_theme_stylebox_override("normal", start_style)
 	action_box.add_child(start_button)
 	action_box.add_child(_button("속도 변경", _toggle_speed))
 	action_box.add_child(_button("전체 덱 보기", _toggle_deck_view))
@@ -325,6 +387,7 @@ func _build_ui() -> void:
 	details_row.add_child(left_details)
 	var enemy_panel := PanelContainer.new()
 	enemy_panel.custom_minimum_size = Vector2(320, 260)
+	enemy_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.11, 0.10, 0.09, 0.92), Color("92744d"), 12))
 	details_row.add_child(enemy_panel)
 	enemy_detail_box = VBoxContainer.new()
 	enemy_detail_box.add_theme_constant_override("separation", 5)
@@ -336,13 +399,20 @@ func _build_ui() -> void:
 	deck_view_box = VBoxContainer.new()
 	left_details.add_child(deck_view_box)
 	left_details.add_child(_label("손패 · 각 카드를 누른 뒤 배치할 칸을 누르세요", 19))
+	var hand_scroll := ScrollContainer.new()
+	hand_scroll.custom_minimum_size.y = 225
+	hand_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left_details.add_child(hand_scroll)
 	hand_box = HBoxContainer.new()
-	left_details.add_child(hand_box)
+	hand_box.add_theme_constant_override("separation", 8)
+	hand_scroll.add_child(hand_box)
 	root.add_child(_label("진행 및 전투 기록", 19))
 	log_box = RichTextLabel.new()
 	log_box.custom_minimum_size = Vector2(0, 230)
 	log_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	log_box.scroll_following = true
+	log_box.add_theme_color_override("default_color", Color("f5e7c9"))
+	log_box.add_theme_stylebox_override("normal", _panel_style(Color(0.10, 0.09, 0.08, 0.92), Color("796344"), 10))
 	root.add_child(log_box)
 
 func _starter_only(name_value: String) -> bool:
@@ -1245,6 +1315,7 @@ func _refresh() -> void:
 		elif data.type == "soldier": text_value += "\n병사"
 		elif data.type == "skill": text_value += "\n스킬 · 클릭해 사용"
 		var card_button := _button(text_value, _select_card.bind(i))
+		_style_card(card_button, data.type, selected_card == i)
 		var keyword_help := _display_card_description(card.name, card) + "\n"
 		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
 		if data.get("regen", 0) > 0: keyword_help += "#재생: 매 라운드 준비 시작 시 표시된 만큼 회복합니다.\n"
@@ -1259,7 +1330,7 @@ func _refresh() -> void:
 		card_button.tooltip_text = keyword_help
 		if pending_skill_discards == 0 and _unique_in_play(card.name):
 			card_button.disabled = true
-		card_button.custom_minimum_size = Vector2(120, 158)
+		card_button.custom_minimum_size = Vector2(140, 210)
 		if card_icons.has(card.name):
 			card_button.icon = card_icons[card.name]
 			card_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1817,7 +1888,8 @@ func _show_card_reward() -> void:
 		var data: Dictionary = card_defs[card_name]
 		var cost_text := "드로우 시 코스트 1~3" if chaos_mask else "코스트 %d" % _card_cost(card_name)
 		var reward_button := _button("%s\n%s\n%s" % [card_name, cost_text, _display_card_description(card_name)], _choose_card_reward.bind(card_name))
-		reward_button.custom_minimum_size = Vector2(130, 105)
+		_style_card(reward_button, data.type, false)
+		reward_button.custom_minimum_size = Vector2(145, 155)
 		if card_icons.has(card_name):
 			reward_button.icon = card_icons[card_name]
 			reward_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
