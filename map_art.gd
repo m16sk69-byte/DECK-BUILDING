@@ -198,11 +198,34 @@ func _draw() -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var p: Vector2 = event.position / (size.x / 1200.0)
-		for lane in range(game.lanes.size()):
-			for stage_index in range(NODES.size()):
-				if Rect2(_node_pos(lane, stage_index) - Vector2(51, 31), Vector2(102, 62)).has_point(p):
-					var stage: Dictionary = game._map_stage(lane, stage_index)
-					if stage.type == "path": return
-					game._slot_pressed(lane, stage.slot, stage.type == "room")
-					return
+		var target := _drop_target(event.position)
+		if not target.is_empty():
+			game._slot_pressed(target.lane, target.slot, target.type == "room")
+
+func _drop_target(position: Vector2) -> Dictionary:
+	if size.x <= 0: return {}
+	var p: Vector2 = position / (size.x / 1200.0)
+	for lane in range(game.lanes.size()):
+		for stage_index in range(NODES.size()):
+			if Rect2(_node_pos(lane, stage_index) - Vector2(51, 31), Vector2(102, 62)).has_point(p):
+				var stage: Dictionary = game._map_stage(lane, stage_index)
+				if stage.type != "path": return {"lane":lane, "slot":stage.slot, "type":stage.type}
+	return {}
+
+func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
+	if not data is Dictionary or data.get("kind", "") != "hand_card": return false
+	if game.phase != "준비" or game.pending_skill_discards > 0: return false
+	var index: int = game._hand_index_by_id(data.get("card_id", -1))
+	if index < 0: return false
+	var target := _drop_target(at_position)
+	if target.is_empty(): return false
+	var kind: String = game.card_defs[game.hand[index].name].type
+	return (kind == "soldier" and target.type == "room") or (kind == "trap" and target.type == "trap")
+
+func _drop_data(at_position: Vector2, data: Variant) -> void:
+	if not _can_drop_data(at_position, data): return
+	var target := _drop_target(at_position)
+	var index: int = game._hand_index_by_id(data.card_id)
+	game._select_card(index)
+	if game.selected_card == index and game.mode == "card":
+		game._slot_pressed(target.lane, target.slot, target.type == "room")

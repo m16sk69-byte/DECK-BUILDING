@@ -159,6 +159,7 @@ var sprite_icons: Dictionary = {}
 var music_player: AudioStreamPlayer
 var music_button: Button
 var music_enabled := true
+var background_texture: Texture2D
 var summary: Label
 var status_label: Label
 var seed_input: LineEdit
@@ -173,6 +174,9 @@ var log_box: RichTextLabel
 var action_box: HBoxContainer
 var options_box: HBoxContainer
 var start_button: Button
+var menu_layer: Control
+var menu_main: VBoxContainer
+var menu_options: VBoxContainer
 var log_lines: Array[String] = []
 
 func _ready() -> void:
@@ -182,6 +186,7 @@ func _ready() -> void:
 	_start_music()
 	_build_ui()
 	_new_game()
+	_build_main_menu()
 
 func _load_art() -> void:
 	var names := {"가시":"spike", "화살":"arrow", "낙석":"rock"}
@@ -248,8 +253,8 @@ func _panel_style(color: Color, border: Color, padding := 10) -> StyleBoxFlat:
 	style.content_margin_bottom = padding
 	return style
 
-func _button(value: String, callback: Callable) -> Button:
-	var button := Button.new()
+func _button(value: String, callback: Callable, draggable := false) -> Button:
+	var button: Button = preload("res://hand_card.gd").new() if draggable else Button.new()
 	button.text = value
 	button.custom_minimum_size = Vector2(105, 44)
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -306,7 +311,8 @@ func _build_ui() -> void:
 	var background_image := Image.new()
 	if background_image.load("res://assets/dungeon_command_background.png") == OK:
 		var background := TextureRect.new()
-		background.texture = ImageTexture.create_from_image(background_image)
+		background_texture = ImageTexture.create_from_image(background_image)
+		background.texture = background_texture
 		background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -319,6 +325,7 @@ func _build_ui() -> void:
 	add_child(shade)
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.offset_bottom = -200
 	add_child(scroll)
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 16)
@@ -328,20 +335,20 @@ func _build_ui() -> void:
 	var root := VBoxContainer.new()
 	root.custom_minimum_size.x = 1280
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_theme_constant_override("separation", 9)
+	root.add_theme_constant_override("separation", 5)
 	margin.add_child(root)
 	var header := PanelContainer.new()
-	header.add_theme_stylebox_override("panel", _panel_style(Color(0.11, 0.10, 0.09, 0.9), Color("92744d"), 10))
+	header.add_theme_stylebox_override("panel", _panel_style(Color(0.11, 0.10, 0.09, 0.9), Color("92744d"), 6))
 	root.add_child(header)
 	var header_content := VBoxContainer.new()
 	header_content.add_theme_constant_override("separation", 4)
 	header.add_child(header_content)
-	var heading := _label("던전 방어선   ◆   덱빌딩 디펜스", 25)
+	var heading := _label("던전 방어선   ◆   덱빌딩 디펜스", 20)
 	heading.add_theme_color_override("font_color", Color("f5d899"))
 	header_content.add_child(heading)
-	summary = _label("", 19)
+	summary = _label("", 17)
 	header_content.add_child(summary)
-	status_label = _label("", 16)
+	status_label = _label("", 14)
 	status_label.add_theme_color_override("font_color", Color("d1c3a7"))
 	header_content.add_child(status_label)
 	var seed_row := HBoxContainer.new()
@@ -357,10 +364,10 @@ func _build_ui() -> void:
 	var seed_button := _button("시드로 새 게임", _start_seeded_game)
 	seed_button.custom_minimum_size.x = 145
 	seed_row.add_child(seed_button)
-	root.add_child(_label("적 파티 · 클릭하면 경로를 강조합니다", 19))
+	root.add_child(_label("적 파티 · 클릭하면 경로를 강조합니다", 16))
 	party_box = VBoxContainer.new()
 	root.add_child(party_box)
-	root.add_child(_label("방어선 · 카드 선택 후 통로 또는 방을 클릭하세요", 19))
+	root.add_child(_label("방어선 · 손패를 끌어 병사는 방에, 함정은 통로에 배치하세요", 16))
 	board_box = VBoxContainer.new()
 	root.add_child(board_box)
 	action_box = HBoxContainer.new()
@@ -398,14 +405,31 @@ func _build_ui() -> void:
 	left_details.add_child(options_box)
 	deck_view_box = VBoxContainer.new()
 	left_details.add_child(deck_view_box)
-	left_details.add_child(_label("손패 · 각 카드를 누른 뒤 배치할 칸을 누르세요", 19))
+	var hand_dock := PanelContainer.new()
+	hand_dock.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hand_dock.offset_left = 16
+	hand_dock.offset_right = -16
+	hand_dock.offset_top = -195
+	hand_dock.offset_bottom = -6
+	hand_dock.add_theme_stylebox_override("panel", _panel_style(Color(0.11, 0.10, 0.09, 0.96), Color("92744d"), 4))
+	add_child(hand_dock)
+	var hand_row := HBoxContainer.new()
+	hand_row.add_theme_constant_override("separation", 8)
+	hand_dock.add_child(hand_row)
+	var hand_label := _label("손패\n끌어서\n배치", 14)
+	hand_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hand_label.custom_minimum_size.x = 48
+	hand_row.add_child(hand_label)
 	var hand_scroll := ScrollContainer.new()
-	hand_scroll.custom_minimum_size.y = 225
+	hand_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hand_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	left_details.add_child(hand_scroll)
+	hand_row.add_child(hand_scroll)
+	var hand_center := CenterContainer.new()
+	hand_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hand_scroll.add_child(hand_center)
 	hand_box = HBoxContainer.new()
 	hand_box.add_theme_constant_override("separation", 8)
-	hand_scroll.add_child(hand_box)
+	hand_center.add_child(hand_box)
 	root.add_child(_label("진행 및 전투 기록", 19))
 	log_box = RichTextLabel.new()
 	log_box.custom_minimum_size = Vector2(0, 230)
@@ -414,6 +438,100 @@ func _build_ui() -> void:
 	log_box.add_theme_color_override("default_color", Color("f5e7c9"))
 	log_box.add_theme_stylebox_override("normal", _panel_style(Color(0.10, 0.09, 0.08, 0.92), Color("796344"), 10))
 	root.add_child(log_box)
+
+func _build_main_menu() -> void:
+	menu_layer = Control.new()
+	menu_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(menu_layer)
+	var base := ColorRect.new()
+	base.color = Color("241e1c")
+	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_layer.add_child(base)
+	if background_texture:
+		var menu_background := TextureRect.new()
+		menu_background.texture = background_texture
+		menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		menu_layer.add_child(menu_background)
+	var shade := ColorRect.new()
+	shade.color = Color(0.03, 0.025, 0.025, 0.40)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_layer.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_layer.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(440, 0)
+	panel.add_theme_stylebox_override("panel", _panel_style(Color(0.10, 0.09, 0.08, 0.94), Color("b69a69"), 24))
+	center.add_child(panel)
+	var container := VBoxContainer.new()
+	container.add_theme_constant_override("separation", 12)
+	panel.add_child(container)
+	var title := _label("던전 방어선", 36)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color("f5d899"))
+	container.add_child(title)
+	var subtitle := _label("덱을 만들고 던전 코어를 지켜내세요", 16)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	container.add_child(subtitle)
+	menu_main = VBoxContainer.new()
+	menu_main.add_theme_constant_override("separation", 10)
+	container.add_child(menu_main)
+	menu_main.add_child(_button("게임 시작", _start_from_menu))
+	menu_main.add_child(_button("옵션", _show_menu_options))
+	menu_main.add_child(_button("게임 종료", _quit_game))
+	menu_options = VBoxContainer.new()
+	menu_options.add_theme_constant_override("separation", 10)
+	container.add_child(menu_options)
+	menu_options.add_child(_label("옵션", 22))
+	var music_toggle := CheckButton.new()
+	music_toggle.text = "배경음 켜기"
+	music_toggle.button_pressed = music_enabled
+	music_toggle.toggled.connect(_set_menu_music)
+	menu_options.add_child(music_toggle)
+	menu_options.add_child(_label("배경음 크기", 16))
+	var volume := HSlider.new()
+	volume.min_value = 0
+	volume.max_value = 100
+	volume.step = 1
+	volume.value = 50
+	volume.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	volume.value_changed.connect(_set_music_volume)
+	menu_options.add_child(volume)
+	menu_options.add_child(_button("돌아가기", _hide_menu_options))
+	menu_options.hide()
+
+func _start_from_menu() -> void:
+	menu_layer.hide()
+
+func _show_menu_options() -> void:
+	menu_main.hide()
+	menu_options.show()
+
+func _hide_menu_options() -> void:
+	menu_options.hide()
+	menu_main.show()
+
+func _set_menu_music(enabled: bool) -> void:
+	music_enabled = enabled
+	if music_player: music_player.stream_paused = not enabled
+	if music_button: music_button.text = "배경음: 켬" if enabled else "배경음: 끔"
+
+func _set_music_volume(value: float) -> void:
+	if music_player: music_player.volume_db = linear_to_db(maxf(0.001, value / 100.0)) - 8.0
+
+func _quit_game() -> void:
+	get_tree().quit()
+
+func _hand_index_by_id(card_id: int) -> int:
+	for i in range(hand.size()):
+		if hand[i].get("id", -1) == card_id: return i
+	return -1
 
 func _starter_only(name_value: String) -> bool:
 	if name_value in STARTER_ONLY_CARDS: return true
@@ -1216,7 +1334,7 @@ func _refresh() -> void:
 	if not extra_relics.is_empty(): summary.text += "   |   유물: " + ", ".join(extra_relics)
 	if evolution_rounds_remaining > 0: summary.text += "   |   진화 시련: %d라운드 코스트 -2" % evolution_rounds_remaining
 	if draw_penalty > 0: summary.text += "   |   턴 드로우 %d장" % maxi(0, 5 - draw_penalty)
-	var instructions := {"card":"손패 선택 → 칸 클릭", "remove":"아래 병사·함정 선택: 기존 제거 / 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭 · 기존 병사는 코스트 1", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
+	var instructions := {"card":"손패를 끌어 배치 · 스킬은 클릭", "remove":"아래 병사·함정 선택: 기존 제거 / 새 배치는 환급", "move":"병사 선택 → 이동할 방 클릭 · 기존 병사는 코스트 1", "order":"병사 선택 → 같은 방의 원하는 순서 선택", "rest":"병사 선택 → 한 웨이브 휴식", "rearm":"재장전 모드: 비활성 함정 클릭", "trap_order":"함정 순서: 아래 화살표로 조정 · 적 2명 이상이면 선두 함정 우선"}
 	status_label.text = "%s   |   속도 %s   |   방 정원 4명 · 소모성 재장전 발동당 5G · 휴식 시 최대 체력의 30%% 회복" % [instructions[mode], "빠름" if speed < 0.4 else "보통"]
 	if pending_skill_discards > 0: status_label.text = "버릴 카드 선택 · 해당 카드의 현재 코스트 획득" if pending_recycle_cost else "손패에서 버릴 카드 %d장을 선택하세요" % pending_skill_discards
 	start_button.disabled = phase != "준비" or pending_skill_discards > 0
@@ -1314,8 +1432,11 @@ func _refresh() -> void:
 		if data.type == "trap": text_value += "\n함정 · " + data.slot
 		elif data.type == "soldier": text_value += "\n병사"
 		elif data.type == "skill": text_value += "\n스킬 · 클릭해 사용"
-		var card_button := _button(text_value, _select_card.bind(i))
+		var card_button := _button(text_value, _select_card.bind(i), true)
+		card_button.set("game", self)
+		card_button.set("card_id", card.get("id", -1))
 		_style_card(card_button, data.type, selected_card == i)
+		card_button.add_theme_font_size_override("font_size", 13)
 		var keyword_help := _display_card_description(card.name, card) + "\n"
 		if data.get("consumable", false): keyword_help += "#소모성: 발동 후 재장전 전까지 다시 발동하지 않습니다.\n"
 		if data.get("regen", 0) > 0: keyword_help += "#재생: 매 라운드 준비 시작 시 표시된 만큼 회복합니다.\n"
@@ -1330,12 +1451,12 @@ func _refresh() -> void:
 		card_button.tooltip_text = keyword_help
 		if pending_skill_discards == 0 and _unique_in_play(card.name):
 			card_button.disabled = true
-		card_button.custom_minimum_size = Vector2(140, 210)
+		card_button.custom_minimum_size = Vector2(140, 160)
 		if card_icons.has(card.name):
 			card_button.icon = card_icons[card.name]
 			card_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			card_button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-			card_button.add_theme_constant_override("icon_max_width", 88)
+			card_button.add_theme_constant_override("icon_max_width", 55)
 		hand_box.add_child(card_button)
 
 func _toggle_deck_view() -> void:
