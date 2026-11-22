@@ -8,7 +8,7 @@ const CARDS = {
 	"독가스 함정": {"type":"trap", "slot":"천장", "targeting":"all", "cost":2, "poison":3, "consumable":true, "rarity":"상급", "description":"#소모성\n지나는 적 전체에 #중독3"},
 	"폭발 룬": {"type":"trap", "slot":"바닥", "targeting":"front_two", "cost":1, "damage":7, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두부터 2명 각 7 피해"},
 	"가시 그물": {"type":"trap", "slot":"천장", "targeting":"front", "cost":1, "damage":4, "bleed":3, "consumable":true, "rarity":"일반", "rarity_provisional":true, "description":"#소모성\n선두 1명 4 피해 · #출혈3"},
-	"작살함정": {"type":"trap", "slot":"벽", "targeting":"second", "cost":1, "damage":6, "consumable":false, "rarity":"일반", "rarity_provisional":true, "description":"두 번째 적 1명 6 피해\n적 2명 이상일 때 발동"},
+	"작살함정": {"type":"trap", "slot":"벽", "targeting":"second", "cost":1, "damage":6, "consumable":false, "rarity":"일반", "rarity_provisional":true, "description":"두 번째 적 1명 6 피해\n적이 혼자면 그 적에게 피해"},
 	"마법전이진": {"type":"trap", "slot":"바닥", "targeting":"lowest_hp", "cost":2, "teleport_next_room":true, "consumable":false, "rarity":"상급", "rarity_provisional":true, "description":"체력이 가장 낮은 적 1명\n경로의 다음 방으로 전이"},
 	"치유 봉인 룬": {"type":"trap", "slot":"벽", "targeting":"all", "cost":2, "heal_block":true, "consumable":true, "rarity":"상급", "rarity_provisional":true, "description":"#소모성\n적 전체에게 이번 웨이브 회복 봉인"},
 	"고블린": {"type":"soldier", "cost":1, "hp":14, "attack":3, "description":"HP 14 · 선두 3 피해"},
@@ -1507,7 +1507,6 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		var targets := _live_enemies(party)
 		if targets.is_empty(): break
 		var trap_data: Dictionary = card_defs[trap.name]
-		if trap_data.get("targeting", "front") == "second" and targets.size() < 2: continue
 		var destination := {}
 		if trap_data.get("teleport_next_room", false):
 			destination = _next_route_room(party)
@@ -1544,7 +1543,7 @@ func _apply_traps(party: Dictionary, slot: int) -> void:
 		elif targeting == "front_two":
 			for unit in targets.slice(0, 2): _trap_hit_enemy(unit, damage, trap.name, trap_data)
 		elif targeting == "second":
-			_trap_hit_enemy(targets[1], damage, trap.name, trap_data)
+			_trap_hit_enemy(targets[mini(1, targets.size() - 1)], damage, trap.name, trap_data)
 		elif targeting == "rear":
 			for i in range(maxi(0, targets.size() - 2), targets.size()):
 				_trap_hit_enemy(targets[i], damage, trap.name, trap_data)

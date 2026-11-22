@@ -79,14 +79,14 @@ func check() -> void:
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
-	click.position = Vector2(650, board._lane_y(2)) * (board.size.x / 1200.0)
+	click.position = board._node_pos(2, 4) * (board.size.x / 1200.0)
 	board._gui_input(click)
 	assert(game.lanes[2].rooms[1].size() == 1)
 	game.hand.append({"id":90002, "name":"가시"})
 	game._select_card(game.hand.size() - 1)
 	await process_frame
 	board = game.board_box.get_child(0)
-	click.position = Vector2(775, board._lane_y(2)) * (board.size.x / 1200.0)
+	click.position = board._node_pos(2, 5) * (board.size.x / 1200.0)
 	board._gui_input(click)
 	assert(game.lanes[2].traps[game._map_stage(2, 5).slot].size() == 1)
 	# Two routes merging on one corridor queue and each trigger its actual trap.

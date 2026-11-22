@@ -34,7 +34,18 @@ func check() -> void:
 	assert(b.hp == 8 and harpoon.hits == 2 and harpoon.active)
 	party.units = [a]
 	game._apply_traps(party, 0)
-	assert(a.hp == 20 and harpoon.hits == 2)
+	assert(a.hp == 14 and harpoon.hits == 3 and harpoon.active)
+	game._apply_traps(party, 0)
+	assert(a.hp == 8 and harpoon.hits == 4)
+	# 이미 쓰러진 적은 대상 순서에서 제외한다.
+	b.hp = 0
+	c.hp = 0
+	party.units = [b, a, c]
+	game._apply_traps(party, 0)
+	assert(a.hp == 2 and harpoon.hits == 5)
+	a.hp = 0
+	game._apply_traps(party, 0)
+	assert(harpoon.hits == 5)
 	# The lowest HP enemy teleports, dies in a separate battle, and the original frontline acts again when the remaining party reaches the room.
 	new_two_lane_game(game)
 	game.speed = 0.001

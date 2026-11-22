@@ -26,6 +26,12 @@ func _notification(what: int) -> void:
 func _lane_y(lane: int) -> float:
 	return 110.0 + lane * 140.0 if game.lanes.size() == 2 else 75.0 + lane * 105.0
 
+func _node_pos(lane: int, stage: int) -> Vector2:
+	# 시드에 따른 장식용 오프셋. 전투 경로와 난수 상태에는 영향을 주지 않는다.
+	var step := 15.0 if game.lanes.size() == 2 else 10.0
+	var offset := int((int(game.map_seed) + lane * 47 + stage * 31) % 3) - 1
+	return Vector2(NODES[stage], _lane_y(lane) + offset * step)
+
 func _text(at: Vector2, value: String, size_value := 14, color := INK) -> void:
 	draw_string(font, at, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size_value, color)
 
@@ -77,11 +83,29 @@ func _trap(kind: String, at: Vector2, enabled: bool) -> void:
 			draw_line(at + Vector2(-5, 0), at + Vector2(5, 0), glow, 2)
 			draw_line(at + Vector2(0, -5), at + Vector2(0, 5), glow, 2)
 
-func _orthogonal(from: Vector2, to: Vector2, color: Color, width: float) -> void:
-	var middle := (from.x + to.x) / 2.0
+func _orthogonal(from: Vector2, to: Vector2, color: Color, width: float, bend_x := -1.0) -> void:
+	var middle := (from.x + to.x) / 2.0 if bend_x < 0 else bend_x
 	draw_line(from, Vector2(middle, from.y), color, width)
 	draw_line(Vector2(middle, from.y), Vector2(middle, to.y), color, width)
 	draw_line(Vector2(middle, to.y), to, color, width)
+
+func _edge(from: Vector2, to: Vector2, bend_x := -1.0) -> void:
+	_orthogonal(from, to, Color("3c2b25"), 26, bend_x)
+	_orthogonal(from, to, Color("b99b6a"), 18, bend_x)
+	_orthogonal(from, to, Color("d6bf8a"), 12, bend_x)
+
+func _stone_backdrop() -> void:
+	draw_rect(Rect2(0, 0, 1200, BOARD_HEIGHT), Color("292a2a"))
+	# 작은 벽돌과 얼룩을 배경에 반복해 방과 통로의 대비를 살린다.
+	for row in range(12):
+		var y := 27.0 + row * 30.0
+		draw_line(Vector2(4, y), Vector2(1196, y), Color("353632"), 1)
+		for col in range(16):
+			var x := col * 80.0 + (40.0 if row % 2 else 0.0)
+			if x >= 4 and x <= 1196:
+				draw_line(Vector2(x, y), Vector2(x, minf(y + 30, BOARD_HEIGHT - 4)), Color("353632"), 1)
+	draw_rect(Rect2(2, 2, 1196, BOARD_HEIGHT - 4), Color("836745"), false, 3)
+	draw_rect(Rect2(7, 7, 1186, BOARD_HEIGHT - 14), Color("4f4434"), false, 1)
 
 func _party_route(party: Dictionary) -> Array:
 	if party.has("route") and party.route.size() == NODES.size(): return party.route
@@ -93,43 +117,45 @@ func _draw() -> void:
 	if not game or not font: return
 	var scale_value := size.x / 1200.0
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(scale_value, scale_value))
-	draw_rect(Rect2(0, 0, 1200, BOARD_HEIGHT), Color("142632"))
-	draw_rect(Rect2(1, 1, 1198, BOARD_HEIGHT - 2), Color("466071"), false, 2)
+	_stone_backdrop()
 	var entry := Vector2(55, BOARD_HEIGHT / 2.0)
 	var goal := Vector2(1140, BOARD_HEIGHT / 2.0)
-	var path_color := Color("66817d")
 	for lane in range(game.lanes.size()):
-		var y := _lane_y(lane)
-		draw_line(Vector2(NODES[0], y), Vector2(NODES[-1], y), path_color, 6)
-		_orthogonal(entry, Vector2(NODES[0], y), path_color, 6)
-		_orthogonal(Vector2(NODES[-1], y), goal, path_color, 6)
+		_edge(entry, _node_pos(lane, 0))
+		for stage in range(NODES.size() - 1):
+			_edge(_node_pos(lane, stage), _node_pos(lane, stage + 1))
+		_edge(_node_pos(lane, NODES.size() - 1), goal)
 	for crossing in game.map_crossings:
 		var x: float = NODES[crossing.after] + 51.0
-		draw_line(Vector2(x, _lane_y(crossing.top)), Vector2(x, _lane_y(crossing.top + 1)), path_color, 6)
+		_edge(_node_pos(crossing.top, crossing.after), _node_pos(crossing.top + 1, crossing.after + 1), x)
+		_edge(_node_pos(crossing.top + 1, crossing.after), _node_pos(crossing.top, crossing.after + 1), x)
 	var selected_route: Array = []
 	if game.phase not in ["이벤트", "카드 보상", "보스 보상"] and game.selected_party >= 0 and game.selected_party < game.parties.size():
 		selected_route = _party_route(game.parties[game.selected_party])
-		_orthogonal(entry, Vector2(NODES[0], _lane_y(selected_route[0])), GOLD, 4)
+		_orthogonal(entry, _node_pos(selected_route[0], 0), GOLD, 4)
 		for stage in range(NODES.size() - 1):
-			var from := Vector2(NODES[stage], _lane_y(selected_route[stage]))
-			var to := Vector2(NODES[stage + 1], _lane_y(selected_route[stage + 1]))
-			var bend_x: float = from.x + 51.0 if from.y != to.y else (from.x + to.x) / 2.0
-			draw_line(from, Vector2(bend_x, from.y), GOLD, 4)
-			draw_line(Vector2(bend_x, from.y), Vector2(bend_x, to.y), GOLD, 4)
-			draw_line(Vector2(bend_x, to.y), to, GOLD, 4)
-		_orthogonal(Vector2(NODES[-1], _lane_y(selected_route[-1])), goal, GOLD, 4)
+			var from := _node_pos(selected_route[stage], stage)
+			var to := _node_pos(selected_route[stage + 1], stage + 1)
+			var bend_x: float = from.x + 51.0 if selected_route[stage] != selected_route[stage + 1] else -1.0
+			_orthogonal(from, to, GOLD, 4, bend_x)
+		_orthogonal(_node_pos(selected_route[-1], NODES.size() - 1), goal, GOLD, 4)
 	for lane in range(game.lanes.size()):
-		var y := _lane_y(lane)
-		_text(Vector2(100, y - 37), game._lane_name(lane) + " 길", 13, MUTED)
 		for stage_index in range(NODES.size()):
-			var x: float = NODES[stage_index]
+			var center := _node_pos(lane, stage_index)
+			var x := center.x
+			var y := center.y
 			var stage: Dictionary = game._map_stage(lane, stage_index)
 			if stage.type == "path": continue
 			var is_room: bool = stage.type == "room"
 			var rect := Rect2(x - 51, y - 31, 102, 62)
-			draw_rect(rect, Color("304651") if is_room else Color("293a40"))
+			draw_rect(rect.grow(3), Color("3c2b25"))
+			draw_rect(rect, Color("514737") if is_room else Color("3d3d32"))
+			draw_rect(rect.grow(-4), Color("454439") if is_room else Color("363d36"))
+			# 작은 바닥 타일은 아이콘과 체력 표시 뒤에 배치한다.
+			for tile in range(3):
+				draw_line(Vector2(x - 44 + tile * 25, y - 10), Vector2(x - 44 + tile * 25, y + 25), Color("504b3c"), 1)
 			var selected: bool = not selected_route.is_empty() and selected_route[stage_index] == lane
-			draw_rect(rect, GOLD if selected else Color("57717a"), false, 2)
+			draw_rect(rect, GOLD if selected else Color("9f8963"), false, 2)
 			_text(Vector2(x - 46, y - 15), ("방 " if is_room else "통로 ") + str(stage.slot + 1), 11, GOLD if selected else MUTED)
 			if is_room:
 				var soldiers: Array = game.lanes[lane].rooms[stage.slot]
@@ -156,14 +182,14 @@ func _draw() -> void:
 	for i in range(game.parties.size()):
 		var party: Dictionary = game.parties[i]
 		if party.done: continue
-		var at := entry + Vector2(-20 + i * 13, 0) if party.pos < 0 else Vector2(NODES[clampi(party.pos, 0, NODES.size() - 1)], _lane_y(party.lane))
+		var at := entry + Vector2(-20 + i * 13, 0) if party.pos < 0 else _node_pos(party.lane, clampi(party.pos, 0, NODES.size() - 1))
 		if party.pos >= NODES.size(): at = goal - Vector2(35, 0)
 		var alive: Array = game._live_enemies(party)
 		if not alive.is_empty(): _figure(alive[0].name, at + Vector2(35, -4), true, 0.5)
 		_text(at + Vector2(32, -17), str(i + 1), 10, ENEMY)
 		for warp in party.get("warps", []):
 			if warp.state in ["waiting", "fighting"] and warp.unit.hp > 0:
-				var warp_at := Vector2(NODES[warp.pos], _lane_y(warp.lane))
+				var warp_at := _node_pos(warp.lane, warp.pos)
 				_figure(warp.unit.name, warp_at + Vector2(30, -4), true, 0.5)
 				_text(warp_at + Vector2(20, -20), "전이", 10, GOLD)
 	_text(Vector2(14, 20), "◆ 방어선  |  노란 선: 선택한 파티의 전체 경로", 14, GOLD)
@@ -174,9 +200,8 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var p: Vector2 = event.position / (size.x / 1200.0)
 		for lane in range(game.lanes.size()):
-			var y := _lane_y(lane)
 			for stage_index in range(NODES.size()):
-				if Rect2(NODES[stage_index] - 51, y - 31, 102, 62).has_point(p):
+				if Rect2(_node_pos(lane, stage_index) - Vector2(51, 31), Vector2(102, 62)).has_point(p):
 					var stage: Dictionary = game._map_stage(lane, stage_index)
 					if stage.type == "path": return
 					game._slot_pressed(lane, stage.slot, stage.type == "room")
